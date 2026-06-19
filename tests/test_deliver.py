@@ -111,6 +111,28 @@ class EmailTests(unittest.TestCase):
         self.assertIn("Subject: AI-Briefing", decoded)
         self.assertIn("GPT-5", decoded)
 
+    def test_empty_email_to_falls_back_to_default(self):
+        # Die Action setzt EMAIL_TO immer; bei fehlendem Secret als leerer String.
+        sent = {}
+
+        class Exe:
+            def __init__(self, v): self.v = v
+            def execute(self): return self.v
+
+        class Svc:
+            def users(self):
+                return types.SimpleNamespace(
+                    getProfile=lambda userId: Exe({"emailAddress": "bot@nl.com"}),
+                    messages=lambda: types.SimpleNamespace(
+                        send=lambda userId, body: (sent.__setitem__("raw", body["raw"]) or Exe({}))))
+
+        with patch.object(deliver.gmail_source, "build_service", lambda: Svc()), \
+             patch.dict(os.environ, {"EMAIL_TO": ""}):  # leerer String wie in der Action
+            ok = deliver.send_email(_analyzed(), _stories())
+        self.assertTrue(ok)
+        decoded = base64.urlsafe_b64decode(sent["raw"]).decode("utf-8", "replace")
+        self.assertIn("To: mail@tobiasreich.de", decoded)  # Default greift trotz leerem EMAIL_TO
+
 
 if __name__ == "__main__":
     unittest.main()
