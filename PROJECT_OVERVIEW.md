@@ -131,12 +131,14 @@ Reihenfolge angelehnt an Spec §13. Jede Phase ist eigenständig testbar.
 - [x] Deploy-Job: `deploy-pages@v4`
 - [x] YAML-Struktur validiert
 
-### Phase 8 — Tests / Akzeptanz (Spec §12)
-- [ ] Unit-Test: Headline-Längen-Validierung (≤10 Wörter)
-- [ ] Cross-Posting: genau `NEWSLETTER_TOP_N_IN_AI` Items im AI-Tab
-- [ ] Dedupe: zweiter Lauf erzeugt keine doppelten Stories
-- [ ] Resilienz: toter Feed bricht Lauf nicht ab
-- [ ] Secrets-Hygiene: kein Secret in Logs/Dashboard
+### Phase 8 — Tests / Akzeptanz (Spec §12) ✅
+- [x] Unit-Test: Headline-Längen-Validierung (≤10 Wörter)
+- [x] Cross-Posting: genau `NEWSLETTER_TOP_N_IN_AI` Items im AI-Tab
+- [x] Dedupe: zweiter Lauf erzeugt keine doppelten Stories
+- [x] Resilienz: toter Feed + Gmail-Ausfall brechen den Lauf nicht ab
+- [x] 28 `unittest`-Tests in `tests/` (laufen ohne externe Libs via Stubs)
+- [x] CI-Workflow `tests.yml` führt sie bei jedem Push/PR aus
+- [ ] Secrets-Hygiene: kein Secret in Logs/Dashboard (in der echten Action zu prüfen, Phase 9)
 
 ### Phase 9 — GitHub-Einrichtung (Nutzer-Schritte, Spec §16)
 - [ ] Repo privat anlegen, Code hochladen
