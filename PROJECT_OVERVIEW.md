@@ -70,17 +70,17 @@ news-agent/
 
 Reihenfolge angelehnt an Spec §13. Jede Phase ist eigenständig testbar.
 
-### Phase 0 — Grundgerüst
-- [ ] `requirements.txt` (`feedparser`, `anthropic`, `google-api-python-client`, `google-auth`, `google-auth-oauthlib`, ggf. `requests`)
-- [ ] `.gitignore` (`output/`, `.env`, `token.json`, `client_secret*.json`, `__pycache__/`)
-- [ ] Ordnerstruktur `src/`, `scripts/`, `state/` anlegen
-- [ ] `README.md` (Kurzbeschreibung + Verweis auf Spec/Overview)
+### Phase 0 — Grundgerüst ✅
+- [x] `requirements.txt` (`feedparser`, `anthropic`, `google-api-python-client`, `google-auth`, `google-auth-oauthlib`, `requests`)
+- [x] `.gitignore` (`output/`, `.env`, `token.json`, `client_secret*.json`, `__pycache__/`)
+- [x] Ordnerstruktur `src/`, `scripts/`, `state/` angelegt
+- [x] `README.md` (Kurzbeschreibung + Verweis auf Spec/Overview)
 
-### Phase 1 — Konfiguration
-- [ ] `config.py`: `TOPICS` mit **`ai_news` (enabled, 72 h)**; **`medtech` als `enabled: False`** vorbereiten (geparkt, später aktivierbar)
-- [ ] `config.py`: `NEWSLETTER`-Block (Schritt-1-Query `is:unread newer_than:2d`, `max_messages=25`)
-- [ ] Konstanten: `HEADLINE_MAX_WORDS=10`, `NEWSLETTER_TOP_N_IN_AI=5`, `ANTHROPIC_MODEL`
-- [ ] Auskommentierte Schritt-2-Felder vorbereiten (allowlist/label/content_spam_check)
+### Phase 1 — Konfiguration ✅
+- [x] `config.py`: `TOPICS` mit **`ai_news` (enabled, 72 h)**; **`medtech` als `enabled: False`** vorbereitet (geparkt, später aktivierbar)
+- [x] `config.py`: `NEWSLETTER`-Block (Schritt-1-Query `is:unread newer_than:2d`, `max_messages=25`)
+- [x] Konstanten: `HEADLINE_MAX_WORDS=10`, `NEWSLETTER_TOP_N_IN_AI=5`, `ANTHROPIC_MODEL="claude-sonnet-4-6"`
+- [x] Auskommentierte Schritt-2-Felder vorbereitet (allowlist/label/content_spam_check)
 
 ### Phase 2 — RSS-Collector (AI)
 - [ ] `collector.py`: AI-Feeds einlesen, Dedupe (Titel-Hash), Zeitfenster 72 h

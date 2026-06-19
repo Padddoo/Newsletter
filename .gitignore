@@ -1,0 +1,13 @@
+# Build-Artefakte (wird im Action-Lauf erzeugt, nicht eingecheckt)
+output/
+
+# Secrets / OAuth (NIE einchecken)
+.env
+token.json
+client_secret*.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
