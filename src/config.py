@@ -130,7 +130,11 @@ SMTP_PORT = 465                      # SSL
 # ---------------------------------------------------------------------------
 EMAIL = {
     "enabled": True,
-    "to": "mail@tobiasreich.de",   # Empfänger; per Env EMAIL_TO überschreibbar
+    # Empfänger (Liste); per Env EMAIL_TO (kommagetrennt) überschreibbar.
+    "to": [
+        "mail@tobiasreich.de",
+        "elena.sroka@gmail.com",
+    ],
     "subject_prefix": "AI-Briefing",
     # Absender = das Gmail-Konto aus GMAIL_ADDRESS.
 }

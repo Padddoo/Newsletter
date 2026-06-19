@@ -101,7 +101,7 @@ class _FakeSMTP:
 
 
 class EmailTests(unittest.TestCase):
-    def test_sends_via_smtp(self):
+    def test_sends_to_all_config_recipients(self):
         with patch.object(deliver.gmail_source, "get_account",
                           lambda: ("bot@nl.com", "apppw")), \
              patch.object(deliver.smtplib, "SMTP_SSL", _FakeSMTP), \
@@ -111,7 +111,7 @@ class EmailTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(_FakeSMTP.sent["login"], ("bot@nl.com", "apppw"))
         msg = _FakeSMTP.sent["msg"]
-        self.assertEqual(msg["To"], "mail@tobiasreich.de")
+        self.assertEqual(msg["To"], "mail@tobiasreich.de, elena.sroka@gmail.com")
         self.assertEqual(msg["From"], "bot@nl.com")
         self.assertTrue(msg["Subject"].startswith("AI-Briefing"))
         self.assertIn("GPT-5", msg.as_string())
@@ -124,7 +124,18 @@ class EmailTests(unittest.TestCase):
              patch.dict(os.environ, {"EMAIL_TO": ""}):
             ok = deliver.send_email(_analyzed(), _stories())
         self.assertTrue(ok)
-        self.assertEqual(_FakeSMTP.sent["msg"]["To"], "mail@tobiasreich.de")
+        self.assertEqual(_FakeSMTP.sent["msg"]["To"],
+                         "mail@tobiasreich.de, elena.sroka@gmail.com")
+
+    def test_env_email_to_overrides_with_comma_list(self):
+        with patch.object(deliver.gmail_source, "get_account",
+                          lambda: ("bot@nl.com", "apppw")), \
+             patch.object(deliver.smtplib, "SMTP_SSL", _FakeSMTP), \
+             patch.dict(os.environ, {"EMAIL_TO": "a@x.com, b@y.com , a@x.com"}):
+            ok = deliver.send_email(_analyzed(), _stories())
+        self.assertTrue(ok)
+        # kommagetrennt geparst, getrimmt, dedupliziert
+        self.assertEqual(_FakeSMTP.sent["msg"]["To"], "a@x.com, b@y.com")
 
 
 if __name__ == "__main__":

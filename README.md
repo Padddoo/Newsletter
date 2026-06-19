@@ -42,7 +42,7 @@ Action GitHub Secrets) — **nie im Code**.
 | `GMAIL_APP_PASSWORD` | ja (Gmail-App-Passwort, 2FA nötig) |
 | `TELEGRAM_BOT_TOKEN` | optional (Telegram) |
 | `TELEGRAM_CHAT_ID` | optional (Telegram) |
-| `EMAIL_TO` | optional (Empfänger; sonst Default aus `config.py`) |
+| `EMAIL_TO` | optional (Empfänger, kommagetrennt für mehrere; sonst Default aus `config.py`) |
 
 > **Gmail-Zugang:** App-Passwort (IMAP zum Lesen, SMTP zum Senden) — kein OAuth.
 > 2-Faktor-Auth am Konto aktivieren, dann ein App-Passwort erzeugen. Siehe
