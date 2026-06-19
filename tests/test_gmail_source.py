@@ -1,17 +1,23 @@
 import _stubs; _stubs.install()
 
-import base64
 import os
 import tempfile
-import types
 import unittest
+from email.message import EmailMessage
 from unittest.mock import patch
 
 import gmail_source as gs
 
 
-def _b64(s: bytes) -> str:
-    return base64.urlsafe_b64encode(s).decode()
+def _raw(message_id, subject, html):
+    m = EmailMessage()
+    m["Message-ID"] = message_id
+    m["From"] = "AI Weekly <hi@aiweekly.co>"
+    m["Subject"] = subject
+    m["Date"] = "Wed, 18 Jun 2026 10:00:00 +0000"
+    m.set_content("plain fallback")
+    m.add_alternative(html, subtype="html")
+    return m.as_bytes()
 
 
 class ExtractionTests(unittest.TestCase):
@@ -28,23 +34,33 @@ class ExtractionTests(unittest.TestCase):
         self.assertIn(("Story two", "https://news.example/s2"), links)
         self.assertTrue(all(u.startswith("http") for _, u in links))  # mailto raus
 
-    def test_decode(self):
-        raw = "Hällo & Wörld\nzeile"
-        self.assertEqual(gs._decode(_b64(raw.encode())), raw)
+    def test_plain_only_link_fallback(self):
+        body, links = gs._body_and_links("see https://only.example/x now", None)
+        self.assertEqual(links, [("https://only.example/x", "https://only.example/x")])
 
-    def test_walk_parts_prefers_plain_links_from_html(self):
-        payload = {"mimeType": "multipart/alternative", "parts": [
-            {"mimeType": "text/plain", "body": {"data": _b64(b"Plain body http://x/p")}},
-            {"mimeType": "text/html", "body": {"data": _b64(b'<a href="http://x/h">h</a>')}},
-        ]}
-        plain, html = gs._walk_parts(payload)
+    def test_extract_prefers_plain_links_from_html(self):
+        m = EmailMessage()
+        m.set_content("Plain body http://x/p")
+        m.add_alternative('<a href="http://x/h">h</a>', subtype="html")
+        plain, html = gs._extract_plain_html(m)
         body, links = gs._body_and_links(plain, html)
         self.assertEqual(body, "Plain body http://x/p")       # plain bevorzugt
         self.assertIn(("h", "http://x/h"), links)             # Links aus HTML
 
-    def test_plain_only_link_fallback(self):
-        body, links = gs._body_and_links("see https://only.example/x now", None)
-        self.assertEqual(links, [("https://only.example/x", "https://only.example/x")])
+
+class AccountTests(unittest.TestCase):
+    def test_strips_and_removes_spaces(self):
+        env = {"GMAIL_ADDRESS": " me@gmail.com \n",
+               "GMAIL_APP_PASSWORD": " abcd efgh ijkl mnop "}
+        with patch.dict(os.environ, env):
+            addr, pw = gs.get_account()
+        self.assertEqual(addr, "me@gmail.com")
+        self.assertEqual(pw, "abcdefghijklmnop")              # interne Spaces weg
+
+    def test_missing_raises(self):
+        with patch.dict(os.environ, {"GMAIL_ADDRESS": "", "GMAIL_APP_PASSWORD": ""}):
+            with self.assertRaises(RuntimeError):
+                gs.get_account()
 
 
 class SeenIdsTests(unittest.TestCase):
@@ -59,56 +75,34 @@ class SeenIdsTests(unittest.TestCase):
 
 
 class FetchTests(unittest.TestCase):
-    def test_fetch_skips_seen_ids(self):
-        fake = {
-            "m1": {"payload": {"headers": [{"name": "From", "value": "News A"},
-                                           {"name": "Subject", "value": "Issue 1"}],
-                               "mimeType": "text/html",
-                               "body": {"data": _b64(b'<a href="http://a/1">link</a>')}}},
-            "m2": {"payload": {"headers": [{"name": "From", "value": "News B"},
-                                           {"name": "Subject", "value": "Issue 2"}],
-                               "mimeType": "text/plain",
-                               "body": {"data": _b64(b"plain http://b/2")}}},
+    def test_fetch_parses_newest_first_and_dedupes(self):
+        msgs = {
+            b"1": _raw("<a@x>", "Issue A", '<p>Hi <a href="http://a/1">l</a></p>'),
+            b"2": _raw("<b@x>", "Issue B", '<p><a href="http://b/2">two</a></p>'),
+            b"3": _raw("<c@x>", "Issue C", '<p><a href="http://c/3">three</a></p>'),
         }
 
-        class Exe:
-            def __init__(self, v): self.v = v
-            def execute(self): return self.v
-
-        class Msgs:
-            def list(self, **k):
-                return Exe({"messages": [{"id": "m1"}, {"id": "m2"}, {"id": "old"}]})
-            def get(self, userId, id, format):
-                return Exe(fake[id])
-
-        class Svc:
-            def users(self):
-                return types.SimpleNamespace(messages=lambda: Msgs())
+        class FakeIMAP:
+            def login(self, addr, pw): pass
+            def select(self, folder, readonly=False): return ("OK", [b"3"])
+            def search(self, charset, *criteria): return ("OK", [b"1 2 3"])
+            def fetch(self, num, spec): return ("OK", [(b"hdr", msgs[num])])
+            def logout(self): return ("BYE", [b""])
 
         tmp = tempfile.mkdtemp()
+        env = {"GMAIL_ADDRESS": "me@gmail.com", "GMAIL_APP_PASSWORD": "abcd efgh ijkl mnop"}
         with patch.object(gs, "STATE_FILE", os.path.join(tmp, "seen.json")), \
-             patch.object(gs, "build_service", lambda: Svc()):
-            gs.mark_seen(["old"])
+             patch.object(gs.imaplib, "IMAP4_SSL", lambda host: FakeIMAP()), \
+             patch.dict(os.environ, env):
+            gs.mark_seen(["<a@x>"])                           # A bereits gesehen
             res = gs.fetch_newsletters()
-        self.assertEqual([r["subject"] for r in res], ["Issue 1", "Issue 2"])
-        self.assertEqual(res[0]["links"], [("link", "http://a/1")])
 
-
-class CredentialTests(unittest.TestCase):
-    def test_strips_whitespace_from_secrets(self):
-        captured = {}
-
-        def fake_creds(**kwargs):
-            captured.update(kwargs)
-            return types.SimpleNamespace(refresh=lambda req: None)
-
-        env = {"GMAIL_REFRESH_TOKEN": " tok\n", "GMAIL_CLIENT_ID": "id ",
-               "GMAIL_CLIENT_SECRET": "\tsecret\n"}
-        with patch.object(gs, "Credentials", fake_creds), patch.dict(os.environ, env):
-            gs._build_credentials()
-        self.assertEqual(captured["refresh_token"], "tok")
-        self.assertEqual(captured["client_id"], "id")
-        self.assertEqual(captured["client_secret"], "secret")
+        # neueste zuerst (3,2,1); A(1) übersprungen -> [C, B]
+        self.assertEqual([r["subject"] for r in res], ["Issue C", "Issue B"])
+        issue_b = next(r for r in res if r["subject"] == "Issue B")
+        self.assertIn(("two", "http://b/2"), issue_b["links"])
+        self.assertEqual(issue_b["sender"], "AI Weekly <hi@aiweekly.co>")
+        self.assertEqual(issue_b["message_id"], "<b@x>")
 
 
 if __name__ == "__main__":

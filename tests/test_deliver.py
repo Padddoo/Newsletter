@@ -1,7 +1,7 @@
 import _stubs; _stubs.install()
 
-import base64
 import os
+import smtplib
 import tempfile
 import types
 import unittest
@@ -87,61 +87,44 @@ class TelegramTests(unittest.TestCase):
             self.assertFalse(deliver.send_telegram(_analyzed(), _stories()))
 
 
+class _FakeSMTP:
+    """Fake smtplib.SMTP_SSL als Context-Manager, fängt send_message ab."""
+    sent = {}
+
+    def __init__(self, host, port):
+        _FakeSMTP.sent.clear()
+
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def login(self, user, password): _FakeSMTP.sent["login"] = (user, password)
+    def send_message(self, msg): _FakeSMTP.sent["msg"] = msg
+
+
 class EmailTests(unittest.TestCase):
-    def test_sends_via_gmail(self):
-        sent = {}
-
-        class Exe:
-            def __init__(self, v): self.v = v
-            def execute(self): return self.v
-
-        class Msgs:
-            def send(self, userId, body):
-                sent["raw"] = body["raw"]
-                return Exe({})
-
-        class Users:
-            def getProfile(self, userId):
-                return Exe({"emailAddress": "bot@nl.com"})
-            def messages(self):
-                return Msgs()
-
-        class Svc:
-            def users(self):
-                return Users()
-
-        with patch.object(deliver.gmail_source, "build_service", lambda: Svc()), \
+    def test_sends_via_smtp(self):
+        with patch.object(deliver.gmail_source, "get_account",
+                          lambda: ("bot@nl.com", "apppw")), \
+             patch.object(deliver.smtplib, "SMTP_SSL", _FakeSMTP), \
              patch.dict(os.environ, {}, clear=False):
             os.environ.pop("EMAIL_TO", None)
             ok = deliver.send_email(_analyzed(), _stories())
         self.assertTrue(ok)
-        decoded = base64.urlsafe_b64decode(sent["raw"]).decode("utf-8", "replace")
-        self.assertIn("To: mail@tobiasreich.de", decoded)
-        self.assertIn("From: bot@nl.com", decoded)
-        self.assertIn("Subject: AI-Briefing", decoded)
-        self.assertIn("GPT-5", decoded)
+        self.assertEqual(_FakeSMTP.sent["login"], ("bot@nl.com", "apppw"))
+        msg = _FakeSMTP.sent["msg"]
+        self.assertEqual(msg["To"], "mail@tobiasreich.de")
+        self.assertEqual(msg["From"], "bot@nl.com")
+        self.assertTrue(msg["Subject"].startswith("AI-Briefing"))
+        self.assertIn("GPT-5", msg.as_string())
 
     def test_empty_email_to_falls_back_to_default(self):
         # Die Action setzt EMAIL_TO immer; bei fehlendem Secret als leerer String.
-        sent = {}
-
-        class Exe:
-            def __init__(self, v): self.v = v
-            def execute(self): return self.v
-
-        class Svc:
-            def users(self):
-                return types.SimpleNamespace(
-                    getProfile=lambda userId: Exe({"emailAddress": "bot@nl.com"}),
-                    messages=lambda: types.SimpleNamespace(
-                        send=lambda userId, body: (sent.__setitem__("raw", body["raw"]) or Exe({}))))
-
-        with patch.object(deliver.gmail_source, "build_service", lambda: Svc()), \
-             patch.dict(os.environ, {"EMAIL_TO": ""}):  # leerer String wie in der Action
+        with patch.object(deliver.gmail_source, "get_account",
+                          lambda: ("bot@nl.com", "apppw")), \
+             patch.object(deliver.smtplib, "SMTP_SSL", _FakeSMTP), \
+             patch.dict(os.environ, {"EMAIL_TO": ""}):
             ok = deliver.send_email(_analyzed(), _stories())
         self.assertTrue(ok)
-        decoded = base64.urlsafe_b64decode(sent["raw"]).decode("utf-8", "replace")
-        self.assertIn("To: mail@tobiasreich.de", decoded)  # Default greift trotz leerem EMAIL_TO
+        self.assertEqual(_FakeSMTP.sent["msg"]["To"], "mail@tobiasreich.de")
 
 
 if __name__ == "__main__":

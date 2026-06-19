@@ -1,11 +1,11 @@
 import _stubs; _stubs.install()
 
-import base64
 import os
 import tempfile
 import types
 import unittest
 from datetime import datetime, timezone
+from email.message import EmailMessage
 from unittest.mock import patch
 
 import analyst
@@ -30,46 +30,48 @@ def _fake_claude(system, user, max_tokens=4096):
     return '[{"index":0,"priority":"hoch","reason":"Release","summary_de":"GPT-5 ist da."}]'
 
 
-def _fake_gmail_service(sent_email):
-    msg = {"payload": {"headers": [{"name": "From", "value": '"TLDR AI" <hi@tldr.tech>'},
-                                   {"name": "Subject", "value": "Issue 1"}],
-                       "mimeType": "text/html",
-                       "body": {"data": base64.urlsafe_b64encode(
-                           b'<p>News <a href="http://s/1">link</a></p>').decode()}}}
+def _raw_newsletter():
+    m = EmailMessage()
+    m["Message-ID"] = "<m1@tldr>"
+    m["From"] = "TLDR AI <hi@tldr.tech>"
+    m["Subject"] = "Issue 1"
+    m["Date"] = "Wed, 18 Jun 2026 10:00:00 +0000"
+    m.set_content("plain")
+    m.add_alternative('<p>News <a href="http://s/1">link</a></p>', subtype="html")
+    return m.as_bytes()
 
-    class Exe:
-        def __init__(self, v): self.v = v
-        def execute(self): return self.v
 
-    class Msgs:
-        def list(self, **k): return Exe({"messages": [{"id": "m1"}]})
-        def get(self, userId, id, format): return Exe(msg)
-        def send(self, userId, body):
-            sent_email.append(body["raw"]); return Exe({})
-
-    class Users:
-        def messages(self): return Msgs()
-        def getProfile(self, userId): return Exe({"emailAddress": "bot@nl.com"})
-
-    class Svc:
-        def users(self): return Users()
-
-    return Svc()
+class _FakeIMAP:
+    def __init__(self, host): pass
+    def login(self, addr, pw): pass
+    def select(self, folder, readonly=False): return ("OK", [b"1"])
+    def search(self, charset, *criteria): return ("OK", [b"1"])
+    def fetch(self, num, spec): return ("OK", [(b"hdr", _raw_newsletter())])
+    def logout(self): return ("BYE", [b""])
 
 
 class RunIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
-        self.sent_email = []
+        self.smtp_sent = []
         self.tg = []
 
         def fake_post(url, data=None, timeout=None):
             self.tg.append(data)
-            return types.SimpleNamespace(raise_for_status=lambda: None)
+            return types.SimpleNamespace(ok=True, status_code=200, text="{}")
+
+        sent = self.smtp_sent
+
+        class FakeSMTP:
+            def __init__(self, host, port): pass
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def login(self, u, p): pass
+            def send_message(self, msg): sent.append(msg)
 
         env = {"TELEGRAM_BOT_TOKEN": "T", "TELEGRAM_CHAT_ID": "9",
-               "GMAIL_REFRESH_TOKEN": "r", "GMAIL_CLIENT_ID": "c",
-               "GMAIL_CLIENT_SECRET": "s", "ANTHROPIC_API_KEY": "k"}
+               "GMAIL_ADDRESS": "me@gmail.com", "GMAIL_APP_PASSWORD": "app pw",
+               "ANTHROPIC_API_KEY": "k"}
 
         self.patchers = [
             patch.object(deliver, "OUTPUT_DIR", self.tmp),
@@ -77,8 +79,8 @@ class RunIntegrationTests(unittest.TestCase):
             patch.object(gmail_source, "STATE_FILE", os.path.join(self.tmp, "seen.json")),
             patch.object(collector, "_fetch_feed", lambda url: FakeParsed()),
             patch.object(analyst, "_call_claude", _fake_claude),
-            patch.object(gmail_source, "build_service",
-                         lambda: _fake_gmail_service(self.sent_email)),
+            patch.object(gmail_source.imaplib, "IMAP4_SSL", _FakeIMAP),
+            patch.object(deliver.smtplib, "SMTP_SSL", FakeSMTP),
             patch("requests.post", fake_post),
             patch.dict(os.environ, env),
         ]
@@ -95,19 +97,19 @@ class RunIntegrationTests(unittest.TestCase):
         html = self._html()
         self.assertIn("GPT-5 released", html)
         self.assertIn("News mit Link", html)
-        self.assertEqual(len(self.sent_email), 1)            # E-Mail gesendet
+        self.assertEqual(len(self.smtp_sent), 1)             # E-Mail gesendet
         self.assertEqual(len(self.tg), 1)                    # Telegram gesendet
-        self.assertEqual(gmail_source.load_seen_ids(), ["m1"])
+        self.assertEqual(gmail_source.load_seen_ids(), ["<m1@tldr>"])
 
     def test_dedupe_on_second_run(self):
         self.assertEqual(run.main(), 0)
         self.assertEqual(run.main(), 0)
-        # zweiter Lauf: m1 bereits gesehen -> keine Newsletter-Story mehr
+        # zweiter Lauf: <m1@tldr> bereits gesehen -> keine Newsletter-Story mehr
         self.assertNotIn("News mit Link", self._html())
 
     def test_gmail_outage_does_not_block_rss(self):
         def boom():
-            raise RuntimeError("invalid_grant simuliert")
+            raise RuntimeError("IMAP-Login fehlgeschlagen simuliert")
         with patch.object(gmail_source, "fetch_newsletters", boom):
             self.assertEqual(run.main(), 0)
         html = self._html()
