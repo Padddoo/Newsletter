@@ -306,15 +306,29 @@ def _build_email_html(analyzed: dict[str, list[dict]], stories: list[dict]) -> s
     return "".join(parts)
 
 
+def _recipients() -> list[str]:
+    """Empfängerliste: EMAIL_TO (kommagetrennt) überschreibt den config-Default.
+    Leerer Env-Wert fällt auf config.EMAIL['to'] zurück (str oder Liste)."""
+    raw = os.environ.get("EMAIL_TO") or ""
+    if raw.strip():
+        source: list[str] = raw.split(",")
+    else:
+        cfg = EMAIL.get("to", [])
+        source = cfg if isinstance(cfg, list) else [cfg]
+    seen, out = set(), []
+    for addr in (a.strip() for a in source):
+        if addr and addr.lower() not in seen:
+            seen.add(addr.lower())
+            out.append(addr)
+    return out
+
+
 def send_email(analyzed: dict[str, list[dict]], stories: list[dict]) -> bool:
     if not EMAIL.get("enabled", False):
         print("[email] deaktiviert")
         return False
-    # Hinweis: Die Action setzt EMAIL_TO immer (ggf. leerer String, wenn das
-    # Secret fehlt). Daher `or` statt eines get-Defaults, damit ein leerer Wert
-    # auf den config.py-Default zurückfällt.
-    recipient = (os.environ.get("EMAIL_TO") or EMAIL.get("to", "")).strip()
-    if not recipient:
+    recipients = _recipients()
+    if not recipients:
         print("[email] übersprungen (kein Empfänger konfiguriert)")
         return False
 
@@ -322,7 +336,7 @@ def send_email(analyzed: dict[str, list[dict]], stories: list[dict]) -> bool:
         sender, password = gmail_source.get_account()
 
         msg = EmailMessage()
-        msg["To"] = recipient
+        msg["To"] = ", ".join(recipients)
         msg["From"] = sender
         msg["Subject"] = f"{EMAIL.get('subject_prefix', 'AI-Briefing')} – {_today()}"
         msg.set_content("Dieses Briefing wird als HTML dargestellt. "
@@ -335,5 +349,5 @@ def send_email(analyzed: dict[str, list[dict]], stories: list[dict]) -> bool:
     except Exception as exc:
         print(f"[email] Fehler: {exc}")
         return False
-    print(f"[email] gesendet an {recipient}")
+    print(f"[email] gesendet an {', '.join(recipients)}")
     return True
