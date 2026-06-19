@@ -97,12 +97,13 @@ Reihenfolge angelehnt an Spec §13. Jede Phase ist eigenständig testbar.
 - [x] Dedupe über `state/seen_ids.json` (FIFO, max. ~500 IDs)
 - [x] Offline-Logiktest grün (HTML→Text+Links, base64, MIME-Walk, seen_ids-FIFO, fetch+Dedupe)
 
-### Phase 4 — Analyst (Claude)
-- [ ] `analyst.py` (a): AI-RSS-Bewertung → `priority`, `reason`, `summary_de`
-- [ ] `analyst.py` (b): `analyze_newsletters()` → Stories als striktes JSON
-- [ ] Pro Story: `headline` (DE, ≤10 Wörter), `url`, `source_newsletter`, `priority`
-- [ ] Validierung: Headline ≤10 Wörter (hart kürzen); Stories ohne `url` verwerfen
-- [ ] JSON-Retry bei ungültiger Antwort (1×), sonst Thema/Newsletter leer
+### Phase 4 — Analyst (Claude) ✅
+- [x] `analyst.py` (a): AI-RSS-Bewertung → `priority`, `reason`, `summary_de` (+ Priority-Sortierung)
+- [x] `analyst.py` (b): `analyze_newsletters()` → Stories als striktes JSON
+- [x] Pro Story: `headline` (DE, ≤10 Wörter), `url`, `source_newsletter`, `priority`
+- [x] Validierung: Headline ≤10 Wörter (hart kürzen); Stories ohne `url` verwerfen
+- [x] JSON-Retry bei ungültiger Antwort (1×); RSS bleibt erhalten (neutral), Newsletter-Mail leer
+- [x] Offline-Logiktest grün (Parsing/Fences, Headline-Kürzung, Validierung, Fallbacks)
 
 ### Phase 5 — Deliver (Dashboard + Telegram)
 - [ ] `deliver.py`: **2 Tabs (AI News, Newsletter)** — Tab-Logik so bauen, dass MedTech später additiv andockt
