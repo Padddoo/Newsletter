@@ -94,5 +94,22 @@ class FetchTests(unittest.TestCase):
         self.assertEqual(res[0]["links"], [("link", "http://a/1")])
 
 
+class CredentialTests(unittest.TestCase):
+    def test_strips_whitespace_from_secrets(self):
+        captured = {}
+
+        def fake_creds(**kwargs):
+            captured.update(kwargs)
+            return types.SimpleNamespace(refresh=lambda req: None)
+
+        env = {"GMAIL_REFRESH_TOKEN": " tok\n", "GMAIL_CLIENT_ID": "id ",
+               "GMAIL_CLIENT_SECRET": "\tsecret\n"}
+        with patch.object(gs, "Credentials", fake_creds), patch.dict(os.environ, env):
+            gs._build_credentials()
+        self.assertEqual(captured["refresh_token"], "tok")
+        self.assertEqual(captured["client_id"], "id")
+        self.assertEqual(captured["client_secret"], "secret")
+
+
 if __name__ == "__main__":
     unittest.main()

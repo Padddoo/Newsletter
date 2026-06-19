@@ -69,15 +69,18 @@ def mark_seen(new_ids: list[str]) -> None:
 # ---------------------------------------------------------------------------
 def _build_credentials() -> Credentials:
     required = ("GMAIL_REFRESH_TOKEN", "GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET")
-    missing = [name for name in required if not os.environ.get(name)]
+    # .strip(): häufige invalid_grant-Ursache ist ein versehentliches Leerzeichen
+    # oder ein Zeilenumbruch im Secret-Wert.
+    values = {name: os.environ.get(name, "").strip() for name in required}
+    missing = [name for name, val in values.items() if not val]
     if missing:
         raise RuntimeError(f"Fehlende Gmail-Secrets: {', '.join(missing)}")
 
     creds = Credentials(
         token=None,
-        refresh_token=os.environ["GMAIL_REFRESH_TOKEN"],
-        client_id=os.environ["GMAIL_CLIENT_ID"],
-        client_secret=os.environ["GMAIL_CLIENT_SECRET"],
+        refresh_token=values["GMAIL_REFRESH_TOKEN"],
+        client_id=values["GMAIL_CLIENT_ID"],
+        client_secret=values["GMAIL_CLIENT_SECRET"],
         token_uri=_TOKEN_URI,
         scopes=GMAIL_SCOPES,
     )
