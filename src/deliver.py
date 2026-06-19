@@ -241,9 +241,12 @@ def send_telegram(analyzed: dict[str, list[dict]], stories: list[dict]) -> bool:
             },
             timeout=20,
         )
-        resp.raise_for_status()
     except requests.RequestException as exc:
-        print(f"[telegram] Fehler: {exc}")
+        print(f"[telegram] Netzwerkfehler: {exc}")
+        return False
+    if not resp.ok:
+        # Telegram liefert die genaue Ursache als JSON (z. B. "chat not found").
+        print(f"[telegram] Fehler {resp.status_code}: {resp.text[:300]}")
         return False
     print("[telegram] gesendet")
     return True
