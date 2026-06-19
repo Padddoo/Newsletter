@@ -122,13 +122,14 @@ Reihenfolge angelehnt an Spec §13. Jede Phase ist eigenständig testbar.
 - [x] Minimaler `.env`-Loader (Action-Secrets haben Vorrang); seen_ids-Update am Ende
 - [x] End-to-End-Integrationstest grün (inkl. Dedupe-Lauf + Gmail-Ausfall)
 
-### Phase 7 — GitHub Action
-- [ ] `briefing.yml`: Trigger `schedule` (Cron) + `workflow_dispatch`
-- [ ] `permissions`: contents/pages/id-token; `concurrency: briefing`
-- [ ] Build-Job: checkout → setup-python 3.11 → pip install → `python src/run.py`
-- [ ] Secrets als `env` injizieren (siehe §5)
-- [ ] State-Commit (`state/seen_ids.json`) + `upload-pages-artifact`
-- [ ] Deploy-Job: `deploy-pages@v4`
+### Phase 7 — GitHub Action ✅
+- [x] `briefing.yml`: Trigger `schedule` (Cron 06:00 UTC) + `workflow_dispatch`
+- [x] `permissions`: contents/pages/id-token; `concurrency: briefing`
+- [x] Build-Job: checkout → setup-python 3.11 (pip-cache) → pip install → `python src/run.py`
+- [x] Secrets als `env` injiziert (inkl. `EMAIL_TO`)
+- [x] State-Commit (`state/seen_ids.json`, no-op wenn unverändert) + `upload-pages-artifact`
+- [x] Deploy-Job: `deploy-pages@v4`
+- [x] YAML-Struktur validiert
 
 ### Phase 8 — Tests / Akzeptanz (Spec §12)
 - [ ] Unit-Test: Headline-Längen-Validierung (≤10 Wörter)
