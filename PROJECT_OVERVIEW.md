@@ -114,11 +114,13 @@ Reihenfolge angelehnt an Spec §13. Jede Phase ist eigenständig testbar.
 - [x] **E-Mail-Versand** via Gmail (`gmail.send`): HTML-Briefing an die eigene Adresse
 - [x] Offline-Logiktest grün (Dashboard-HTML, Cross-Post-Anzahl, Escaping, Telegram, E-Mail-MIME)
 
-### Phase 6 — Orchestrierung
-- [ ] `run.py`: collect (AI-RSS) → fetch (Gmail) → analyze (RSS) → analyze (Newsletter) → build → telegram → e-mail → seen_ids
-- [ ] Headless (kein `open()`), Exit 0 bei Erfolg
-- [ ] Gmail-Fehler dürfen AI-RSS nicht blockieren (Newsletter-Tab dann leer + Hinweis)
-- [ ] Nur deployen, wenn `output/dashboard.html` erzeugt wurde
+### Phase 6 — Orchestrierung ✅
+- [x] `run.py`: collect (AI-RSS) → fetch (Gmail) → analyze (RSS) → analyze (Newsletter) → build → telegram → e-mail → seen_ids
+- [x] Headless (kein `open()`), Exit 0 bei Erfolg / Exit 1 ohne Dashboard
+- [x] Gmail-Fehler dürfen AI-RSS nicht blockieren (Newsletter-Tab dann leer + Hinweis)
+- [x] Nur deployen, wenn `output/dashboard.html` erzeugt wurde
+- [x] Minimaler `.env`-Loader (Action-Secrets haben Vorrang); seen_ids-Update am Ende
+- [x] End-to-End-Integrationstest grün (inkl. Dedupe-Lauf + Gmail-Ausfall)
 
 ### Phase 7 — GitHub Action
 - [ ] `briefing.yml`: Trigger `schedule` (Cron) + `workflow_dispatch`
