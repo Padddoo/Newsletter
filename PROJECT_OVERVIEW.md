@@ -105,15 +105,17 @@ Reihenfolge angelehnt an Spec §13. Jede Phase ist eigenständig testbar.
 - [x] JSON-Retry bei ungültiger Antwort (1×); RSS bleibt erhalten (neutral), Newsletter-Mail leer
 - [x] Offline-Logiktest grün (Parsing/Fences, Headline-Kürzung, Validierung, Fallbacks)
 
-### Phase 5 — Deliver (Dashboard + Telegram)
-- [ ] `deliver.py`: **2 Tabs (AI News, Newsletter)** — Tab-Logik so bauen, dass MedTech später additiv andockt
-- [ ] AI News: Karten (priority-Farbe, Quelle, `summary_de`, „Warum relevant", Link)
-- [ ] Newsletter-Tab: kompaktes Listenlayout (`● headline — Name ↗`)
-- [ ] Cross-Posting: Top-`NEWSLETTER_TOP_N_IN_AI` zusätzlich im AI-Tab (Badge „aus Newsletter")
-- [ ] Telegram (optional): Top-AI-Prioritäten + Top-Newsletter-Headlines
+### Phase 5 — Deliver (Dashboard + Telegram + E-Mail) ✅
+- [x] `deliver.py`: **2 Tabs (AI News, Newsletter)** — Tab-Logik iteriert über Themen, MedTech dockt später additiv an
+- [x] AI News: Karten (priority-Farbe, Quelle, `summary_de`, „Warum relevant", Link)
+- [x] Newsletter-Tab: kompakte Liste, nach Absender gruppiert (`● headline — Name ↗`)
+- [x] Cross-Posting: Top-`NEWSLETTER_TOP_N_IN_AI` zusätzlich im AI-Tab (Badge „aus Newsletter")
+- [x] Telegram (optional): Top-AI-Prioritäten + Top-Newsletter-Headlines
+- [x] **E-Mail-Versand** via Gmail (`gmail.send`): HTML-Briefing an die eigene Adresse
+- [x] Offline-Logiktest grün (Dashboard-HTML, Cross-Post-Anzahl, Escaping, Telegram, E-Mail-MIME)
 
 ### Phase 6 — Orchestrierung
-- [ ] `run.py`: collect (AI-RSS) → fetch (Gmail) → analyze (RSS) → analyze (Newsletter) → build → telegram → seen_ids
+- [ ] `run.py`: collect (AI-RSS) → fetch (Gmail) → analyze (RSS) → analyze (Newsletter) → build → telegram → e-mail → seen_ids
 - [ ] Headless (kein `open()`), Exit 0 bei Erfolg
 - [ ] Gmail-Fehler dürfen AI-RSS nicht blockieren (Newsletter-Tab dann leer + Hinweis)
 - [ ] Nur deployen, wenn `output/dashboard.html` erzeugt wurde
@@ -152,9 +154,12 @@ Reihenfolge angelehnt an Spec §13. Jede Phase ist eigenständig testbar.
 | `GMAIL_REFRESH_TOKEN` | `scripts/oauth_setup.py` | ja |
 | `TELEGRAM_BOT_TOKEN` | @BotFather | optional |
 | `TELEGRAM_CHAT_ID` | getUpdates | optional |
+| `EMAIL_TO` | Empfänger-Adresse (Default in `config.py`) | optional |
 
-> Laut Spec §5 liegen die drei Gmail-Werte beim Nutzer bereits vor und müssen nur
-> noch als GitHub Secrets eingetragen werden.
+> **Achtung Scope-Erweiterung:** Für den E-Mail-Versand wurde der Gmail-Scope um
+> `gmail.send` erweitert. Der vorhandene (read-only) Refresh-Token kann **nicht**
+> senden — `scripts/oauth_setup.py` einmal neu ausführen und `GMAIL_REFRESH_TOKEN`
+> ersetzen (Phase 9).
 
 ---
 
@@ -178,6 +183,7 @@ Reihenfolge angelehnt an Spec §13. Jede Phase ist eigenständig testbar.
 - [ ] Claude erzeugt pro Story Headline (≤10 Wörter) + Quell-Link
 - [ ] Dashboard auf Pages mit 2 Tabs (AI News, Newsletter)
 - [ ] Top-Newsletter-Items erscheinen zusätzlich im AI-News-Tab
+- [ ] Briefing wird zusätzlich per E-Mail (Gmail `gmail.send`) verschickt
 - [ ] Secrets ausschließlich in GitHub Secrets
 - [ ] Ein Lauf kostet nur wenige Cent und bleibt im Freikontingent
 - [ ] Newsletter-Spam-Schutz = Gmail-Filter (Härtung = Schritt 2)

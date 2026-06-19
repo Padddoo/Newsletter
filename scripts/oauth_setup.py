@@ -24,8 +24,12 @@ import sys
 
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-# Minimaler Scope: nur Lesen, keine Schreib-/Sende-Rechte.
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+# Scopes: readonly zum Lesen der Newsletter, send zum Verschicken des Briefings.
+# (Muss mit GMAIL_SCOPES in src/config.py übereinstimmen.)
+SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
+]
 
 
 def main() -> None:

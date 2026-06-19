@@ -113,9 +113,26 @@ NEWSLETTER = {
 }
 
 # ---------------------------------------------------------------------------
-# Gmail OAuth-Scope (read-only, minimal)
+# Gmail OAuth-Scopes
+#   readonly -> Newsletter lesen   |   send -> Briefing per E-Mail verschicken
+# Hinweis: Nach Erweiterung um "send" muss scripts/oauth_setup.py einmal neu
+# ausgeführt und GMAIL_REFRESH_TOKEN ersetzt werden (der alte Token kann nicht
+# senden).
 # ---------------------------------------------------------------------------
-GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+GMAIL_SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
+]
+
+# ---------------------------------------------------------------------------
+# E-Mail-Versand (Briefing per Gmail an die eigene Hauptadresse)
+# ---------------------------------------------------------------------------
+EMAIL = {
+    "enabled": True,
+    "to": "mail@tobiasreich.de",   # Empfänger; per Env EMAIL_TO überschreibbar
+    "subject_prefix": "AI-Briefing",
+    # Absender = das authentifizierte Gmail-Konto selbst (wird zur Laufzeit ermittelt).
+}
 
 # ---------------------------------------------------------------------------
 # State (Newsletter-Dedupe)

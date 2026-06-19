@@ -91,6 +91,12 @@ def _build_credentials() -> Credentials:
     return creds
 
 
+def build_service():
+    """Authentifizierter Gmail-API-Client (zum Lesen UND Senden wiederverwendbar)."""
+    return build("gmail", "v1", credentials=_build_credentials(),
+                 cache_discovery=False)
+
+
 # ---------------------------------------------------------------------------
 # Body- / Link-Extraktion
 # ---------------------------------------------------------------------------
@@ -226,8 +232,7 @@ def fetch_newsletters() -> list[dict]:
     if not NEWSLETTER.get("enabled", False):
         return []
 
-    creds = _build_credentials()
-    service = build("gmail", "v1", credentials=creds, cache_discovery=False)
+    service = build_service()
 
     query = NEWSLETTER["gmail_query"]
     max_messages = NEWSLETTER.get("max_messages", 25)
