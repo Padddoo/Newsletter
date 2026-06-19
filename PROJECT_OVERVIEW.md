@@ -82,11 +82,12 @@ Reihenfolge angelehnt an Spec §13. Jede Phase ist eigenständig testbar.
 - [x] Konstanten: `HEADLINE_MAX_WORDS=10`, `NEWSLETTER_TOP_N_IN_AI=5`, `ANTHROPIC_MODEL="claude-sonnet-4-6"`
 - [x] Auskommentierte Schritt-2-Felder vorbereitet (allowlist/label/content_spam_check)
 
-### Phase 2 — RSS-Collector (AI)
-- [ ] `collector.py`: AI-Feeds einlesen, Dedupe (Titel-Hash), Zeitfenster 72 h
-- [ ] Keyword-Sortierung (filtert nicht weg), Rückgabe `{ "ai_news": [article,...] }`
-- [ ] Robustheit: tote Feeds überspringen, Lauf fortsetzen
-- [ ] Generisch über `TOPICS` iterieren (deaktiviertes `medtech` wird automatisch übersprungen)
+### Phase 2 — RSS-Collector (AI) ✅
+- [x] `collector.py`: AI-Feeds einlesen, Dedupe (Titel-Hash), Zeitfenster 72 h
+- [x] Keyword-Sortierung (filtert nicht weg), Rückgabe `{ "ai_news": [article,...] }`
+- [x] Robustheit: tote Feeds überspringen (Timeout + Fehler-Skip), Lauf fortsetzen
+- [x] Generisch über `TOPICS` iterieren (deaktiviertes `medtech` wird automatisch übersprungen)
+- [x] Offline-Logiktest grün (Zeitfenster/Dedupe/Sortierung/HTML-Strip/enabled-Filter)
 
 ### Phase 3 — Gmail-Quelle
 - [ ] `scripts/oauth_setup.py`: lokaler `InstalledAppFlow`, gibt 3 Secrets aus (schreibt nichts ins Repo)
