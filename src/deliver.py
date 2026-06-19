@@ -307,7 +307,10 @@ def send_email(analyzed: dict[str, list[dict]], stories: list[dict]) -> bool:
     if not EMAIL.get("enabled", False):
         print("[email] deaktiviert")
         return False
-    recipient = os.environ.get("EMAIL_TO", EMAIL.get("to", "")).strip()
+    # Hinweis: Die Action setzt EMAIL_TO immer (ggf. leerer String, wenn das
+    # Secret fehlt). Daher `or` statt eines get-Defaults, damit ein leerer Wert
+    # auf den config.py-Default zurückfällt.
+    recipient = (os.environ.get("EMAIL_TO") or EMAIL.get("to", "")).strip()
     if not recipient:
         print("[email] übersprungen (kein Empfänger konfiguriert)")
         return False
