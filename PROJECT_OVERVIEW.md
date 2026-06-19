@@ -4,21 +4,28 @@
 > Wir haken hier ab, was erledigt ist, und arbeiten die Phasen der Reihe nach durch.
 >
 > **Stand:** Nur die Spec liegt vor — es existiert noch kein Code.
+>
+> **Scope v1 (Festlegung):** Erster Use Case ist **ausschließlich AI** — aus
+> **Gmail-Newslettern** *und* **AI-RSS-Quellen**. **MedTech ist geparkt** (siehe §10).
 
 ---
 
 ## 1. Was wir bauen (in einem Satz)
 
-Ein vollständig auf GitHub gehosteter, **täglich per Cron** laufender News-Agent,
-der aus drei Quellen (MedTech-RSS, AI-RSS, AI-Newsletter via Gmail) ein
-priorisiertes Briefing erzeugt, das als **Dashboard mit 3 Tabs** auf GitHub Pages
-und optional per Telegram veröffentlicht wird.
+Ein vollständig auf GitHub gehosteter, **täglich per Cron** laufender News-Agent.
+
+**v1 (dieser Use Case):** Thema **AI** aus zwei Quellen — **AI-Newsletter via Gmail**
+und **AI-RSS** — wird zu einem priorisierten Briefing verdichtet und als
+**Dashboard mit 2 Tabs** (AI News, Newsletter) auf GitHub Pages und optional per
+Telegram veröffentlicht. **MedTech ist bewusst geparkt** und wird später als
+zweites Thema additiv ergänzt (§10).
 
 ### Kernprinzipien
 - **Zustandslos & serverlos:** läuft komplett in GitHub Actions, kein Mac/VPS.
 - **Minimaler Gmail-Scope:** nur `gmail.readonly` (Dedupe über `seen_ids.json`).
 - **Kostenarm:** wenige Cent Claude/Tag, im GH-Actions-Freikontingent.
-- **Schritt 1 zuerst:** Spam-Schutz = Gmails eigener Filter. Härtung ist Schritt 2 (§15).
+- **Schritt 1 zuerst:** Newsletter-Spam-Schutz = Gmails eigener Filter. Härtung ist Schritt 2 (§8).
+- **AI-Quelle ist „warm":** durch deine Abos bereits vorkuratiert → Aufgabe = priorisieren + auf Headlines eindampfen.
 
 ---
 
@@ -28,12 +35,12 @@ und optional per Telegram veröffentlicht wird.
 |---------|------|
 | Sprache | Python 3.11 |
 | LLM | Claude (Anthropic SDK) — Modell siehe Offene Punkte |
-| Quellen | `feedparser` (RSS), Gmail API (`google-api-python-client`, `google-auth`, `google-auth-oauthlib`) |
+| Quellen | `feedparser` (AI-RSS), Gmail API (`google-api-python-client`, `google-auth`, `google-auth-oauthlib`) |
 | Hosting | GitHub Actions (Cron 06:00 UTC) + GitHub Pages |
 | Zustellung | `dashboard.html` (Pages) + Telegram (optional) |
 
-**Pipeline:** `collector` (RSS) + `gmail_source` (Mails→Stories) → `analyst` (Claude:
-priorisiert + Headlines ≤10 Wörter) → `deliver` (Dashboard + Telegram) → Pages-Deploy.
+**Pipeline (v1):** `collector` (AI-RSS) + `gmail_source` (Mails→Stories) → `analyst`
+(Claude: priorisiert + Headlines ≤10 Wörter) → `deliver` (Dashboard 2 Tabs + Telegram) → Pages-Deploy.
 
 ---
 
@@ -44,10 +51,10 @@ news-agent/
 ├── .github/workflows/briefing.yml   # Cron + Build + Pages-Deploy
 ├── src/
 │   ├── config.py                    # Themen, Feeds, Profile, NEWSLETTER-Block
-│   ├── collector.py                 # RSS sammeln + vorfiltern
-│   ├── gmail_source.py              # Gmail-Newsletter → Stories  (NEU)
+│   ├── collector.py                 # RSS sammeln + vorfiltern (v1: nur ai_news)
+│   ├── gmail_source.py              # Gmail-Newsletter → Stories
 │   ├── analyst.py                   # Claude: priorisieren + Headlines ≤10 Wörter
-│   ├── deliver.py                   # Dashboard (3 Tabs) + Telegram
+│   ├── deliver.py                   # Dashboard (v1: 2 Tabs) + Telegram
 │   └── run.py                       # Orchestrierung
 ├── scripts/oauth_setup.py           # einmaliger lokaler OAuth-Flow
 ├── state/seen_ids.json              # Dedupe-Status (wird von der Action gepflegt)
@@ -70,15 +77,16 @@ Reihenfolge angelehnt an Spec §13. Jede Phase ist eigenständig testbar.
 - [ ] `README.md` (Kurzbeschreibung + Verweis auf Spec/Overview)
 
 ### Phase 1 — Konfiguration
-- [ ] `config.py`: `TOPICS` (medtech 26 h, ai_news 72 h) mit Feeds, Keywords, Profilen
+- [ ] `config.py`: `TOPICS` mit **`ai_news` (enabled, 72 h)**; **`medtech` als `enabled: False`** vorbereiten (geparkt, später aktivierbar)
 - [ ] `config.py`: `NEWSLETTER`-Block (Schritt-1-Query `is:unread newer_than:2d`, `max_messages=25`)
 - [ ] Konstanten: `HEADLINE_MAX_WORDS=10`, `NEWSLETTER_TOP_N_IN_AI=5`, `ANTHROPIC_MODEL`
 - [ ] Auskommentierte Schritt-2-Felder vorbereiten (allowlist/label/content_spam_check)
 
-### Phase 2 — RSS-Collector
-- [ ] `collector.py`: Feeds einlesen, Dedupe (Titel-Hash), Zeitfenster pro Thema
-- [ ] Keyword-Sortierung (filtert nicht weg), Rückgabe `{topic_key: [article,...]}`
+### Phase 2 — RSS-Collector (AI)
+- [ ] `collector.py`: AI-Feeds einlesen, Dedupe (Titel-Hash), Zeitfenster 72 h
+- [ ] Keyword-Sortierung (filtert nicht weg), Rückgabe `{ "ai_news": [article,...] }`
 - [ ] Robustheit: tote Feeds überspringen, Lauf fortsetzen
+- [ ] Generisch über `TOPICS` iterieren (deaktiviertes `medtech` wird automatisch übersprungen)
 
 ### Phase 3 — Gmail-Quelle
 - [ ] `scripts/oauth_setup.py`: lokaler `InstalledAppFlow`, gibt 3 Secrets aus (schreibt nichts ins Repo)
@@ -88,23 +96,23 @@ Reihenfolge angelehnt an Spec §13. Jede Phase ist eigenständig testbar.
 - [ ] Dedupe über `state/seen_ids.json` (FIFO, max. ~500 IDs)
 
 ### Phase 4 — Analyst (Claude)
-- [ ] `analyst.py` (a): RSS-Bewertung pro Thema → `priority`, `reason`, `summary_de`
+- [ ] `analyst.py` (a): AI-RSS-Bewertung → `priority`, `reason`, `summary_de`
 - [ ] `analyst.py` (b): `analyze_newsletters()` → Stories als striktes JSON
 - [ ] Pro Story: `headline` (DE, ≤10 Wörter), `url`, `source_newsletter`, `priority`
 - [ ] Validierung: Headline ≤10 Wörter (hart kürzen); Stories ohne `url` verwerfen
 - [ ] JSON-Retry bei ungültiger Antwort (1×), sonst Thema/Newsletter leer
 
 ### Phase 5 — Deliver (Dashboard + Telegram)
-- [ ] `deliver.py`: 3 Tabs (MedTech, AI News, Newsletter)
-- [ ] MedTech/AI: Karten (priority-Farbe, Quelle, `summary_de`, „Warum relevant", Link)
+- [ ] `deliver.py`: **2 Tabs (AI News, Newsletter)** — Tab-Logik so bauen, dass MedTech später additiv andockt
+- [ ] AI News: Karten (priority-Farbe, Quelle, `summary_de`, „Warum relevant", Link)
 - [ ] Newsletter-Tab: kompaktes Listenlayout (`● headline — Name ↗`)
 - [ ] Cross-Posting: Top-`NEWSLETTER_TOP_N_IN_AI` zusätzlich im AI-Tab (Badge „aus Newsletter")
-- [ ] Telegram (optional): Top-Prioritäten je Thema + Top-Newsletter-Headlines
+- [ ] Telegram (optional): Top-AI-Prioritäten + Top-Newsletter-Headlines
 
 ### Phase 6 — Orchestrierung
-- [ ] `run.py`: collect → fetch → analyze (RSS) → analyze (Newsletter) → build → telegram → seen_ids
+- [ ] `run.py`: collect (AI-RSS) → fetch (Gmail) → analyze (RSS) → analyze (Newsletter) → build → telegram → seen_ids
 - [ ] Headless (kein `open()`), Exit 0 bei Erfolg
-- [ ] Gmail-Fehler dürfen RSS nicht blockieren (Newsletter-Tab dann leer + Hinweis)
+- [ ] Gmail-Fehler dürfen AI-RSS nicht blockieren (Newsletter-Tab dann leer + Hinweis)
 - [ ] Nur deployen, wenn `output/dashboard.html` erzeugt wurde
 
 ### Phase 7 — GitHub Action
@@ -154,16 +162,18 @@ Reihenfolge angelehnt an Spec §13. Jede Phase ist eigenständig testbar.
 3. **Claude-Modell:** Spec nennt `claude-opus-4-6`. Aktuell verfügbar sind neuere
    Modelle — vor Implementierung auf ein aktuelles Modell festlegen.
 4. **Telegram** aktiv ja/nein (optionaler Block).
-5. **Konkrete Profile/Keywords** für MedTech (PE-Deal) und AI (Anwender) finalisieren.
+5. **AI-Profil** (Anwender-Sicht) + Keyword-Sortierung für `ai_news` finalisieren.
+6. **AI-RSS-Feedliste** bestätigen (Spec §4.2: openai, anthropic, huggingface,
+   marktechpost, google research, technologyreview) — passt das, oder ergänzen?
 
 ---
 
-## 7. Definition of Done (Gesamt, Spec §1.3)
+## 7. Definition of Done (v1, abgeleitet aus Spec §1.3)
 
 - [ ] Action läuft täglich automatisch (Cron) und ist manuell auslösbar
-- [ ] MedTech-RSS, AI-RSS und Gmail-Newsletter werden eingelesen
+- [ ] AI-RSS und Gmail-Newsletter werden eingelesen (MedTech in v1 geparkt)
 - [ ] Claude erzeugt pro Story Headline (≤10 Wörter) + Quell-Link
-- [ ] Dashboard auf Pages mit 3 Tabs (MedTech, AI News, Newsletter)
+- [ ] Dashboard auf Pages mit 2 Tabs (AI News, Newsletter)
 - [ ] Top-Newsletter-Items erscheinen zusätzlich im AI-News-Tab
 - [ ] Secrets ausschließlich in GitHub Secrets
 - [ ] Ein Lauf kostet nur wenige Cent und bleibt im Freikontingent
@@ -171,7 +181,7 @@ Reihenfolge angelehnt an Spec §13. Jede Phase ist eigenständig testbar.
 
 ---
 
-## 8. Bewusst NICHT in diesem Projekt (Schritt 2, Spec §15)
+## 8. Bewusst NICHT in diesem Projekt: Newsletter-Härtung (Schritt 2, Spec §15)
 
 Absender-Allowlist, Label-Strategie und inhaltlicher Spam-/Werbe-Check via Claude.
 Die Config wird so vorbereitet, dass diese Härtung später **additiv** andocken kann.
@@ -180,6 +190,30 @@ Die Config wird so vorbereitet, dass diese Härtung später **additiv** andocken
 
 ## 9. Empfohlener nächster Schritt
 
-**Phase 0 + 1** zusammen umsetzen (Grundgerüst + `config.py`), da alles Weitere
-darauf aufbaut. Davor kurz die **Offenen Entscheidungen** (§6, v. a. Claude-Modell)
-klären, damit `config.py` direkt korrekt ist.
+**Phase 0 + 1** zusammen umsetzen (Grundgerüst + `config.py` mit **nur `ai_news`
+aktiv** + `NEWSLETTER`), da alles Weitere darauf aufbaut. Davor kurz die **Offenen
+Entscheidungen** (§6, v. a. Claude-Modell + AI-Feedliste) klären, damit `config.py`
+direkt korrekt ist.
+
+---
+
+## 10. Geparkt: MedTech (späteres zweites Thema)
+
+MedTech ist **nicht Teil von v1**, der Code bleibt aber dafür offen: `medtech` als
+Topic mit `enabled: False`, der Collector iteriert generisch über `TOPICS`, und das
+2-Tab-Dashboard ist so gebaut, dass ein dritter Tab additiv andockt.
+
+**Grund fürs Parken:** Die Ausgangslage ist in einem ersten Schritt schwach — die
+generischen Branchen-Feeds liefern „MedTech allgemein", nicht die gewünschte Niche
+(Dermatologie-/Ästhetik-M&A mit PE-Deal-Relevanz). Im Gegensatz dazu ist die
+AI-Quelle durch deine Abos bereits vorkuratiert.
+
+**Roadmap zur Reaktivierung (nach Nutzen sortiert):**
+1. **Google-News-Such-Feeds** statt/zusätzlich zu generischen Feeds — bringt
+   gezielte Queries auf die RSS-Seite, ohne Architekturänderung
+   (`https://news.google.com/rss/search?q=...`).
+2. **Claude-Profil schärfen** (hart auf Deal-/Markt-Relevanz filtern).
+3. **Niche-Quellen** nachrüsten (Deal-Wires, dermatologie-spezifische Publikationen).
+4. **Feedback-Schleife**: nützliche Items markieren → Queries/Keywords/Profil nachziehen.
+
+**Reaktivierung** = `medtech` auf `enabled: True` + dritter Tab im Dashboard.
