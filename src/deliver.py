@@ -5,15 +5,15 @@ Drei Kanäle:
   1. build_dashboard(): output/dashboard.html mit 2 Tabs (AI News, Newsletter)
      inkl. Cross-Posting der Top-Newsletter-Stories in den AI-News-Tab.
   2. send_telegram(): kompakter Push (nur wenn TELEGRAM_*-Secrets gesetzt sind).
-  3. send_email(): das Briefing per Gmail (gmail.send) an die eigene Adresse.
+  3. send_email(): das Briefing per Gmail (SMTP, App-Passwort) an die eigene Adresse.
 
 Die Tab-Logik iteriert über die bewerteten RSS-Themen, sodass ein weiteres Thema
 (z. B. reaktiviertes MedTech) später ohne Umbau als zusätzlicher Tab andockt.
 """
 from __future__ import annotations
 
-import base64
 import os
+import smtplib
 from datetime import datetime
 from email.message import EmailMessage
 from html import escape as esc
@@ -22,7 +22,7 @@ import requests
 
 import gmail_source
 from config import (DASHBOARD_FILE, EMAIL, NEWSLETTER_TOP_N_IN_AI, OUTPUT_DIR,
-                    TOPICS)
+                    SMTP_HOST, SMTP_PORT, TOPICS)
 
 _PRIO_RANK = {"hoch": 3, "mittel": 2, "niedrig": 1}
 _PRIO_LABEL = {"hoch": "Hoch", "mittel": "Mittel", "niedrig": "Niedrig"}
@@ -253,7 +253,7 @@ def send_telegram(analyzed: dict[str, list[dict]], stories: list[dict]) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# 3) E-Mail (Gmail, gmail.send)
+# 3) E-Mail (Gmail SMTP, App-Passwort)
 # ---------------------------------------------------------------------------
 def _build_email_html(analyzed: dict[str, list[dict]], stories: list[dict]) -> str:
     box = "background:#fff;border-left:5px solid {c};border-radius:8px;padding:12px 14px;margin:0 0 12px;"
@@ -319,20 +319,19 @@ def send_email(analyzed: dict[str, list[dict]], stories: list[dict]) -> bool:
         return False
 
     try:
-        service = gmail_source.build_service()
-        sender = service.users().getProfile(userId="me").execute().get("emailAddress", "")
+        sender, password = gmail_source.get_account()
 
         msg = EmailMessage()
         msg["To"] = recipient
-        if sender:
-            msg["From"] = sender
+        msg["From"] = sender
         msg["Subject"] = f"{EMAIL.get('subject_prefix', 'AI-Briefing')} – {_today()}"
         msg.set_content("Dieses Briefing wird als HTML dargestellt. "
                         "Bitte einen HTML-fähigen Mail-Client verwenden.")
         msg.add_alternative(_build_email_html(analyzed, stories), subtype="html")
 
-        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
-        service.users().messages().send(userId="me", body={"raw": raw}).execute()
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
+            server.login(sender, password)
+            server.send_message(msg)
     except Exception as exc:
         print(f"[email] Fehler: {exc}")
         return False

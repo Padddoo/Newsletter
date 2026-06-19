@@ -38,25 +38,11 @@ def install() -> None:
     req.get = lambda *a, **k: None
     req.post = lambda *a, **k: None
 
-    # google stack
-    mod("google")
-    mod("google.auth")
-    mod("google.oauth2")
-    mod("google.auth.transport")
-    exc = mod("google.auth.exceptions")
-    exc.RefreshError = type("RefreshError", (Exception,), {})
-    tr = mod("google.auth.transport.requests")
-    tr.Request = lambda *a, **k: None
-    creds = mod("google.oauth2.credentials")
-    creds.Credentials = lambda *a, **k: types.SimpleNamespace(refresh=lambda req: None)
-
-    # googleapiclient
-    mod("googleapiclient")
-    disc = mod("googleapiclient.discovery")
-    disc.build = lambda *a, **k: None
-
-    # anthropic
+    # anthropic (analyst importiert lazy)
     anth = mod("anthropic")
     anth.Anthropic = lambda *a, **k: None
+
+    # Hinweis: imaplib/smtplib/email sind Standardbibliothek und brauchen keine
+    # Stubs; Tests patchen IMAP4_SSL / SMTP_SSL gezielt.
 
     _INSTALLED = True

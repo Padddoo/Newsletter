@@ -2,7 +2,7 @@
 Zentrale Konfiguration des News-Agent.
 
 Enthält ausschließlich statische Konfiguration (Themen, Feeds, Profile, Settings).
-Geheimnisse (API-Keys, OAuth-Token) werden NICHT hier gehalten, sondern zur
+Geheimnisse (API-Keys, App-Passwörter) werden NICHT hier gehalten, sondern zur
 Laufzeit aus Environment-Variablen gelesen (lokal via .env, in der GitHub Action
 aus GitHub Secrets). Siehe README / Spec §8.
 
@@ -87,15 +87,17 @@ TOPICS = {
 }
 
 # ---------------------------------------------------------------------------
-# Gmail-Newsletter-Quelle (AI)
+# Gmail-Newsletter-Quelle (AI) — Zugriff via IMAP (App-Passwort)
 # ---------------------------------------------------------------------------
 NEWSLETTER = {
     "enabled": True,
     "name": "AI Newsletter",
 
-    # SCHRITT 1: simpel — auf Gmails eigenen Spamfilter verlassen. Die API-Query
-    # erfasst nur den Posteingang; was in [Gmail]/Spam liegt, wird nicht gelesen.
-    "gmail_query": "is:unread newer_than:2d",
+    # SCHRITT 1: simpel — auf Gmails eigenen Spamfilter verlassen. Wir lesen nur
+    # den Posteingang (INBOX); was in [Gmail]/Spam liegt, wird nicht erfasst.
+    "imap_folder": "INBOX",
+    "only_unread": True,             # entspricht "is:unread"
+    "lookback_days": 2,              # entspricht "newer_than:2d"
     "max_messages": 25,              # Kostendeckel
     "max_body_chars": 6000,          # Body-Kürzung pro Mail (Token-Deckel)
 
@@ -110,21 +112,18 @@ NEWSLETTER = {
     # --- Vorbereitet für SCHRITT 2 (Newsletter-Härtung, jetzt NICHT aktiv) ---
     # "strategy": "gmail_spam",        # später: "allowlist" | "label"
     # "allowed_senders": [],           # später mit echten Abo-Absendern füllen
-    # "gmail_label": "Newsletter",     # später bei Label-Strategie
+    # "imap_folder": "Newsletter",     # später bei Label-/Ordner-Strategie
     # "content_spam_check": False,     # später: True für inhaltlichen Claude-Check
 }
 
 # ---------------------------------------------------------------------------
-# Gmail OAuth-Scopes
-#   readonly -> Newsletter lesen   |   send -> Briefing per E-Mail verschicken
-# Hinweis: Nach Erweiterung um "send" muss scripts/oauth_setup.py einmal neu
-# ausgeführt und GMAIL_REFRESH_TOKEN ersetzt werden (der alte Token kann nicht
-# senden).
+# Gmail-Zugang via App-Passwort (IMAP lesen + SMTP senden)
+#   Secrets: GMAIL_ADDRESS + GMAIL_APP_PASSWORD
+#   Voraussetzung: 2FA am Konto aktiv, App-Passwort erzeugt.
 # ---------------------------------------------------------------------------
-GMAIL_SCOPES = [
-    "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/gmail.send",
-]
+IMAP_HOST = "imap.gmail.com"
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = 465                      # SSL
 
 # ---------------------------------------------------------------------------
 # E-Mail-Versand (Briefing per Gmail an die eigene Hauptadresse)
@@ -133,7 +132,7 @@ EMAIL = {
     "enabled": True,
     "to": "mail@tobiasreich.de",   # Empfänger; per Env EMAIL_TO überschreibbar
     "subject_prefix": "AI-Briefing",
-    # Absender = das authentifizierte Gmail-Konto selbst (wird zur Laufzeit ermittelt).
+    # Absender = das Gmail-Konto aus GMAIL_ADDRESS.
 }
 
 # ---------------------------------------------------------------------------

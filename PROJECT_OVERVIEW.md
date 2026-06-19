@@ -22,7 +22,7 @@ zweites Thema additiv ergänzt (§10).
 
 ### Kernprinzipien
 - **Zustandslos & serverlos:** läuft komplett in GitHub Actions, kein Mac/VPS.
-- **Minimaler Gmail-Scope:** nur `gmail.readonly` (Dedupe über `seen_ids.json`).
+- **Gmail via App-Passwort:** IMAP read-only lesen, SMTP senden (Dedupe über `seen_ids.json`).
 - **Kostenarm:** wenige Cent Claude/Tag, im GH-Actions-Freikontingent.
 - **Schritt 1 zuerst:** Newsletter-Spam-Schutz = Gmails eigener Filter. Härtung ist Schritt 2 (§8).
 - **AI-Quelle ist „warm":** durch deine Abos bereits vorkuratiert → Aufgabe = priorisieren + auf Headlines eindampfen.
@@ -35,7 +35,7 @@ zweites Thema additiv ergänzt (§10).
 |---------|------|
 | Sprache | Python 3.11 |
 | LLM | Claude (Anthropic SDK) — Modell siehe Offene Punkte |
-| Quellen | `feedparser` (AI-RSS), Gmail API (`google-api-python-client`, `google-auth`, `google-auth-oauthlib`) |
+| Quellen | `feedparser` (AI-RSS), Gmail via IMAP (`imaplib`, stdlib) |
 | Hosting | GitHub Actions (Cron 06:00 UTC) + GitHub Pages |
 | Zustellung | `dashboard.html` (Pages) + Telegram (optional) |
 
@@ -56,7 +56,6 @@ news-agent/
 │   ├── analyst.py                   # Claude: priorisieren + Headlines ≤10 Wörter
 │   ├── deliver.py                   # Dashboard (v1: 2 Tabs) + Telegram
 │   └── run.py                       # Orchestrierung
-├── scripts/oauth_setup.py           # einmaliger lokaler OAuth-Flow
 ├── state/seen_ids.json              # Dedupe-Status (wird von der Action gepflegt)
 ├── output/dashboard.html            # Action-Artefakt (nicht eingecheckt)
 ├── requirements.txt
@@ -71,7 +70,7 @@ news-agent/
 Reihenfolge angelehnt an Spec §13. Jede Phase ist eigenständig testbar.
 
 ### Phase 0 — Grundgerüst ✅
-- [x] `requirements.txt` (`feedparser`, `anthropic`, `google-api-python-client`, `google-auth`, `google-auth-oauthlib`, `requests`)
+- [x] `requirements.txt` (`feedparser`, `anthropic`, `requests`) — Gmail via stdlib `imaplib`/`smtplib`
 - [x] `.gitignore` (`output/`, `.env`, `token.json`, `client_secret*.json`, `__pycache__/`)
 - [x] Ordnerstruktur `src/`, `scripts/`, `state/` angelegt
 - [x] `README.md` (Kurzbeschreibung + Verweis auf Spec/Overview)
@@ -89,13 +88,17 @@ Reihenfolge angelehnt an Spec §13. Jede Phase ist eigenständig testbar.
 - [x] Generisch über `TOPICS` iterieren (deaktiviertes `medtech` wird automatisch übersprungen)
 - [x] Offline-Logiktest grün (Zeitfenster/Dedupe/Sortierung/HTML-Strip/enabled-Filter)
 
-### Phase 3 — Gmail-Quelle ✅
-- [x] `scripts/oauth_setup.py`: lokaler `InstalledAppFlow`, gibt 3 Secrets aus (schreibt nichts ins Repo)
-- [x] `gmail_source.py`: headless Credentials aus 3 Secrets (Refresh-Flow, klare Fehlermeldung bei `invalid_grant`)
-- [x] `fetch_newsletters()`: list → get(full) → From/Subject/Date + Body (text/plain bevorzugt)
+### Phase 3 — Gmail-Quelle ✅  *(via IMAP/App-Passwort)*
+- [x] `gmail_source.py`: IMAP-Login (App-Passwort), read-only INBOX, UNSEEN + SINCE-Fenster
+- [x] `fetch_newsletters()`: From/Subject/Date + Body (text/plain bevorzugt, sonst HTML)
 - [x] HTML-Strip mit **Link-Erhalt** (`href`→Klartext), Body-Kürzung (~6.000 Zeichen)
-- [x] Dedupe über `state/seen_ids.json` (FIFO, max. ~500 IDs)
-- [x] Offline-Logiktest grün (HTML→Text+Links, base64, MIME-Walk, seen_ids-FIFO, fetch+Dedupe)
+- [x] Dedupe über `state/seen_ids.json` (FIFO, max. ~500 IDs; Message-ID)
+- [x] Nur Standardbibliothek (`imaplib`/`email`) — keine Google-Abhängigkeit
+- [x] Offline-Logiktest grün (HTML→Text+Links, MIME-Extraktion, seen_ids-FIFO, fetch+Dedupe)
+
+> **Hinweis:** Ursprünglich war Gmail-OAuth (`gmail.readonly`/`gmail.send`) geplant.
+> Wegen wiederholter `invalid_grant`-Probleme auf **App-Passwort (IMAP lesen +
+> SMTP senden)** umgestellt — einfacheres Setup, kein OAuth-Client/Token.
 
 ### Phase 4 — Analyst (Claude) ✅
 - [x] `analyst.py` (a): AI-RSS-Bewertung → `priority`, `reason`, `summary_de` (+ Priority-Sortierung)
@@ -111,7 +114,7 @@ Reihenfolge angelehnt an Spec §13. Jede Phase ist eigenständig testbar.
 - [x] Newsletter-Tab: kompakte Liste, nach Absender gruppiert (`● headline — Name ↗`)
 - [x] Cross-Posting: Top-`NEWSLETTER_TOP_N_IN_AI` zusätzlich im AI-Tab (Badge „aus Newsletter")
 - [x] Telegram (optional): Top-AI-Prioritäten + Top-Newsletter-Headlines
-- [x] **E-Mail-Versand** via Gmail (`gmail.send`): HTML-Briefing an die eigene Adresse
+- [x] **E-Mail-Versand** via Gmail SMTP (App-Passwort): HTML-Briefing an die eigene Adresse
 - [x] Offline-Logiktest grün (Dashboard-HTML, Cross-Post-Anzahl, Escaping, Telegram, E-Mail-MIME)
 
 ### Phase 6 — Orchestrierung ✅
@@ -154,17 +157,14 @@ Reihenfolge angelehnt an Spec §13. Jede Phase ist eigenständig testbar.
 | Secret | Quelle | Pflicht |
 |--------|--------|---------|
 | `ANTHROPIC_API_KEY` | console.anthropic.com | ja |
-| `GMAIL_CLIENT_ID` | OAuth-Client JSON | ja |
-| `GMAIL_CLIENT_SECRET` | OAuth-Client JSON | ja |
-| `GMAIL_REFRESH_TOKEN` | `scripts/oauth_setup.py` | ja |
+| `GMAIL_ADDRESS` | Newsletter-Postfach-Adresse | ja |
+| `GMAIL_APP_PASSWORD` | Gmail App-Passwort (2FA nötig) | ja |
 | `TELEGRAM_BOT_TOKEN` | @BotFather | optional |
 | `TELEGRAM_CHAT_ID` | getUpdates | optional |
 | `EMAIL_TO` | Empfänger-Adresse (Default in `config.py`) | optional |
 
-> **Achtung Scope-Erweiterung:** Für den E-Mail-Versand wurde der Gmail-Scope um
-> `gmail.send` erweitert. Der vorhandene (read-only) Refresh-Token kann **nicht**
-> senden — `scripts/oauth_setup.py` einmal neu ausführen und `GMAIL_REFRESH_TOKEN`
-> ersetzen (Phase 9).
+> **Gmail-Zugang via App-Passwort:** IMAP zum Lesen, SMTP zum Senden — kein OAuth,
+> kein Refresh-Token. 2FA am Konto aktivieren, App-Passwort erzeugen (siehe `SETUP.md`).
 
 ---
 
@@ -188,7 +188,7 @@ Reihenfolge angelehnt an Spec §13. Jede Phase ist eigenständig testbar.
 - [ ] Claude erzeugt pro Story Headline (≤10 Wörter) + Quell-Link
 - [ ] Dashboard auf Pages mit 2 Tabs (AI News, Newsletter)
 - [ ] Top-Newsletter-Items erscheinen zusätzlich im AI-News-Tab
-- [ ] Briefing wird zusätzlich per E-Mail (Gmail `gmail.send`) verschickt
+- [ ] Briefing wird zusätzlich per E-Mail (Gmail SMTP, App-Passwort) verschickt
 - [ ] Secrets ausschließlich in GitHub Secrets
 - [ ] Ein Lauf kostet nur wenige Cent und bleibt im Freikontingent
 - [ ] Newsletter-Spam-Schutz = Gmail-Filter (Härtung = Schritt 2)
