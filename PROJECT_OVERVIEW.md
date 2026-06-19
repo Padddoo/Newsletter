@@ -89,12 +89,13 @@ Reihenfolge angelehnt an Spec §13. Jede Phase ist eigenständig testbar.
 - [x] Generisch über `TOPICS` iterieren (deaktiviertes `medtech` wird automatisch übersprungen)
 - [x] Offline-Logiktest grün (Zeitfenster/Dedupe/Sortierung/HTML-Strip/enabled-Filter)
 
-### Phase 3 — Gmail-Quelle
-- [ ] `scripts/oauth_setup.py`: lokaler `InstalledAppFlow`, gibt 3 Secrets aus (schreibt nichts ins Repo)
-- [ ] `gmail_source.py`: headless Credentials aus 3 Secrets (Refresh-Flow)
-- [ ] `fetch_newsletters()`: list → get(full) → From/Subject/Date + Body (text/plain bevorzugt)
-- [ ] HTML-Strip mit **Link-Erhalt** (`href`→Klartext), Body-Kürzung (~6.000 Zeichen)
-- [ ] Dedupe über `state/seen_ids.json` (FIFO, max. ~500 IDs)
+### Phase 3 — Gmail-Quelle ✅
+- [x] `scripts/oauth_setup.py`: lokaler `InstalledAppFlow`, gibt 3 Secrets aus (schreibt nichts ins Repo)
+- [x] `gmail_source.py`: headless Credentials aus 3 Secrets (Refresh-Flow, klare Fehlermeldung bei `invalid_grant`)
+- [x] `fetch_newsletters()`: list → get(full) → From/Subject/Date + Body (text/plain bevorzugt)
+- [x] HTML-Strip mit **Link-Erhalt** (`href`→Klartext), Body-Kürzung (~6.000 Zeichen)
+- [x] Dedupe über `state/seen_ids.json` (FIFO, max. ~500 IDs)
+- [x] Offline-Logiktest grün (HTML→Text+Links, base64, MIME-Walk, seen_ids-FIFO, fetch+Dedupe)
 
 ### Phase 4 — Analyst (Claude)
 - [ ] `analyst.py` (a): AI-RSS-Bewertung → `priority`, `reason`, `summary_de`
