@@ -36,11 +36,13 @@ TOPICS = {
         "lookback_hours": 72,  # Lab-Blogs posten nur wenige Male pro Woche
         "feeds": [
             "https://openai.com/news/rss.xml",
-            "https://www.anthropic.com/rss.xml",
             "https://huggingface.co/blog/feed.xml",
-            "https://www.marktechpost.com/feed/",
             "https://research.google/blog/rss/",
             "https://www.technologyreview.com/feed/",
+            # Deaktiviert (liefern aktuell keine nutzbaren Daten):
+            #   anthropic.com/rss.xml      -> 404 (URL existiert nicht mehr)
+            #   marktechpost.com/feed/     -> liefert kein valides XML (Anti-Bot)
+            # Bei Bedarf mit funktionierender URL wieder aufnehmen.
         ],
         "keywords": [
             "model", "release", "open source", "open-weight", "API",

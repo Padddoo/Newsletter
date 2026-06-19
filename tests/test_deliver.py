@@ -65,7 +65,7 @@ class TelegramTests(unittest.TestCase):
         def fake_post(url, data=None, timeout=None):
             captured["url"] = url
             captured["data"] = data
-            return types.SimpleNamespace(raise_for_status=lambda: None)
+            return types.SimpleNamespace(ok=True, status_code=200, text="{}")
 
         env = {"TELEGRAM_BOT_TOKEN": "TOK", "TELEGRAM_CHAT_ID": "42"}
         with patch.dict(os.environ, env), \
@@ -75,6 +75,16 @@ class TelegramTests(unittest.TestCase):
         self.assertIn("/botTOK/sendMessage", captured["url"])
         self.assertEqual(captured["data"]["chat_id"], "42")
         self.assertIn("GPT-5", captured["data"]["text"])
+
+    def test_returns_false_on_api_error(self):
+        def fake_post(url, data=None, timeout=None):
+            return types.SimpleNamespace(
+                ok=False, status_code=400,
+                text='{"ok":false,"description":"Bad Request: chat not found"}')
+
+        env = {"TELEGRAM_BOT_TOKEN": "TOK", "TELEGRAM_CHAT_ID": "999"}
+        with patch.dict(os.environ, env), patch.object(requests, "post", fake_post):
+            self.assertFalse(deliver.send_telegram(_analyzed(), _stories()))
 
 
 class EmailTests(unittest.TestCase):
