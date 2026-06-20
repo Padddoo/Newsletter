@@ -2,10 +2,10 @@ name: briefing
 
 on:
   schedule:
-    # Täglich 06:00 UTC. Hinweis: GitHub-Cron läuft in UTC und kann sich um
-    # einige Minuten verspäten. Für "09:00 Berlin" je nach Sommer-/Winterzeit
-    # 0 7 bzw. 0 8 wählen.
-    - cron: "0 6 * * *"
+    # Täglich 06:07 UTC (= 08:07 Berlin Sommerzeit). Bewusst NICHT auf der vollen
+    # Stunde: GitHub überlastet :00-Slots und überspringt/verzögert sie häufig.
+    # GitHub-Cron läuft in UTC und kann sich generell um einige Minuten verspäten.
+    - cron: "7 6 * * *"
   workflow_dispatch: {}
 
 permissions:
