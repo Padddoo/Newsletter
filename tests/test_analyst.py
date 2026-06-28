@@ -68,15 +68,71 @@ class NewsletterPathTests(unittest.TestCase):
                 '{"headline": "Story ohne Link", "url": "", "priority": "mittel"}'
                 ']}')
         with patch.object(A, "_call_claude", return_value=resp):
-            stories = A.analyze_newsletters([self._mail()])
+            stories, processed = A.analyze_newsletters([self._mail()])
         self.assertEqual(len(stories), 2)                       # URL-lose Story verworfen
         self.assertEqual(stories[0]["source_newsletter"], "AI Weekly")  # aus Sender
         self.assertEqual(len(stories[1]["headline"].split()), 10)       # hart gekürzt
         self.assertTrue(all(s["url"].startswith("http") for s in stories))
+        self.assertEqual(processed, ["m1"])  # erfolgreiche Mail -> als gesehen markierbar
 
     def test_decompose_fallback_yields_nothing(self):
+        # Claude-Ausfall: keine Stories UND keine processed_ids -> Mail bleibt
+        # ungesehen und wird im nächsten Lauf erneut versucht (kein Verlust).
         with patch.object(A, "_call_claude", return_value="kaputt"):
-            self.assertEqual(A.analyze_newsletters([self._mail()]), [])
+            stories, processed = A.analyze_newsletters([self._mail()])
+        self.assertEqual(stories, [])
+        self.assertEqual(processed, [])
+
+    def test_decompose_marks_seen_even_with_zero_stories(self):
+        # Claude antwortet gültig, aber ohne brauchbare Stories (z. B. reine
+        # Werbung): Mail gilt als verarbeitet -> wird als gesehen markiert.
+        with patch.object(A, "_call_claude", return_value='{"stories": []}'):
+            stories, processed = A.analyze_newsletters([self._mail()])
+        self.assertEqual(stories, [])
+        self.assertEqual(processed, ["m1"])
+
+
+class ApiErrorTrackingTests(unittest.TestCase):
+    def setUp(self):
+        A.reset_api_errors()
+        self.addCleanup(A.reset_api_errors)
+
+    def _boom(self, msg):
+        def _raise(system, user, max_tokens=4096):
+            raise RuntimeError(msg)
+        return _raise
+
+    def test_limit_error_is_recorded_and_detected(self):
+        msg = ("Error code: 400 - {'error': {'message': 'You have reached your "
+               "specified API usage limits. ...'}}")
+        with patch.object(A, "_call_claude", self._boom(msg)):
+            stories, processed = A.analyze_newsletters(
+                [{"message_id": "m1", "sender": "x", "subject": "s",
+                  "body_text": "b", "links": []}])
+        self.assertEqual(stories, [])
+        self.assertEqual(processed, [])              # nichts als gesehen markieren
+        self.assertEqual(len(A.api_errors()), 1)
+        self.assertIsNotNone(A.limit_reason())       # Frühwarnung greift
+
+    def test_parse_error_is_not_an_api_error(self):
+        # Gültiger Call, aber Müll-Antwort: das ist KEIN API-Fehler -> keine
+        # Frühwarnung, damit ein einzelner Parse-Ausreißer nicht den Lauf rotfärbt.
+        with patch.object(A, "_call_claude", return_value="kein json"):
+            stories, processed = A.analyze_newsletters(
+                [{"message_id": "m1", "sender": "x", "subject": "s",
+                  "body_text": "b", "links": []}])
+        self.assertEqual(stories, [])
+        self.assertEqual(A.api_errors(), [])
+        self.assertIsNone(A.limit_reason())
+
+    def test_reset_clears_errors(self):
+        with patch.object(A, "_call_claude", self._boom("authentication_error")):
+            A.analyze_newsletters([{"message_id": "m1", "sender": "x",
+                                    "subject": "s", "body_text": "b", "links": []}])
+        self.assertIsNotNone(A.limit_reason())
+        A.reset_api_errors()
+        self.assertEqual(A.api_errors(), [])
+        self.assertIsNone(A.limit_reason())
 
 
 if __name__ == "__main__":

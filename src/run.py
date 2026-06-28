@@ -44,6 +44,7 @@ def _load_dotenv(path: str = ".env") -> None:
 
 def main() -> int:
     _load_dotenv()
+    analyst.reset_api_errors()
 
     # 2. RSS
     collected = collector.collect_all()
@@ -59,12 +60,27 @@ def main() -> int:
     # 4. RSS bewerten
     analyzed = analyst.analyze_all(collected)
 
-    # 5. Newsletter zerlegen
+    # 5. Newsletter zerlegen. processed_ids = nur erfolgreich analysierte Mails;
+    #    bei Claude-Ausfall bleiben Mails ungesehen und werden später erneut versucht.
     stories: list[dict] = []
+    processed_ids: list[str] = []
     try:
-        stories = analyst.analyze_newsletters(newsletters)
+        stories, processed_ids = analyst.analyze_newsletters(newsletters)
     except Exception as exc:
         print(f"[run] Newsletter-Analyse fehlgeschlagen: {exc}")
+
+    # 5b. FRÜHWARNUNG: Claude nicht selbstheilend blockiert (API-Limit, Guthaben,
+    #     ungültiger Key, fehlende Berechtigung)? Dann ist das Briefing wertlos
+    #     (keine Bewertungen, keine Newsletter-Stories). Sichtbar fehlschlagen
+    #     statt still ein leeres Briefing zu verschicken — kein Versand, kein
+    #     seen_ids-Update (Newsletter bleiben für den nächsten Lauf erhalten).
+    reason = analyst.limit_reason()
+    if reason:
+        print("[run] FEHLER: Claude-API blockiert — Briefing wäre unvollständig.")
+        print(f"[run] Grund: {reason}")
+        print("[run] Kein Versand (E-Mail/Telegram), kein seen_ids-Update. "
+              "Bitte API-Limit/Key in der Anthropic Console prüfen.")
+        return 2
 
     # 6. Dashboard (Pflicht — ohne gültiges HTML kein Deploy)
     try:
@@ -88,10 +104,12 @@ def main() -> int:
     except Exception as exc:
         print(f"[run] E-Mail-Fehler (ignoriert): {exc}")
 
-    # 9. seen_ids aktualisieren (alle verarbeiteten Mails als gesehen markieren)
-    if newsletters:
+    # 9. seen_ids aktualisieren — NUR Mails, deren Analyse erfolgreich war.
+    #    Bei Claude-Ausfall (z. B. API-Limit) bleiben die Mails ungesehen und
+    #    werden im nächsten Lauf erneut verarbeitet (kein stiller Verlust).
+    if processed_ids:
         try:
-            gmail_source.mark_seen([m["message_id"] for m in newsletters])
+            gmail_source.mark_seen(processed_ids)
         except Exception as exc:
             print(f"[run] seen_ids-Update fehlgeschlagen (ignoriert): {exc}")
 

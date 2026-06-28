@@ -30,6 +30,47 @@ _PRIO_ALIASES = {
 
 _client = None
 
+# Fehlerspeicher des aktuellen Laufs: alle Claude-API-/Transportfehler (kein
+# JSON-Parse-Problem). Basis für die Frühwarnung in run.py. Vor jedem Lauf via
+# reset_api_errors() leeren.
+_api_errors: list[str] = []
+
+# Marker für NICHT selbstheilende Fehler: Lauf soll sichtbar fehlschlagen statt
+# still ein leeres Briefing zu senden. Bewusst auf Klartext-Substrings geprüft
+# (robust gegenüber SDK-Versionen).
+_HARD_BLOCK_MARKERS = (
+    "usage limit",        # "reached your specified API usage limits"
+    "credit balance",     # Guthaben aufgebraucht
+    "authentication",     # 401 — ungültiger/abgelaufener API-Key
+    "invalid x-api-key",
+    "permission",         # 403 — Key ohne Berechtigung
+)
+
+
+def reset_api_errors() -> None:
+    """Leert den Fehlerspeicher. Zu Beginn jedes Laufs aufrufen."""
+    _api_errors.clear()
+
+
+def _record_api_error(exc: Exception) -> None:
+    _api_errors.append(str(exc))
+
+
+def api_errors() -> list[str]:
+    """Alle in diesem Lauf aufgetretenen Claude-API-/Transportfehler."""
+    return list(_api_errors)
+
+
+def limit_reason() -> str | None:
+    """Lesbarer Grund, falls ein nicht selbstheilender Claude-Fehler auftrat
+    (Usage-Limit, fehlendes Guthaben, ungültiger API-Key, fehlende Berechtigung).
+    Sonst None. Frühwarn-Signal für run.py."""
+    for err in _api_errors:
+        low = err.lower()
+        if any(marker in low for marker in _HARD_BLOCK_MARKERS):
+            return err
+    return None
+
 
 def _get_client():
     """Lazy-Init des Anthropic-Clients (liest ANTHROPIC_API_KEY aus der Env)."""
@@ -106,17 +147,30 @@ def _parse_json(text: str):
 
 
 def _call_and_parse(system: str, user: str, max_tokens: int):
-    """Claude-Aufruf mit 1× Retry; None bei endgültigem Parse-Fehler."""
-    last_err = None
+    """Claude-Aufruf; None bei API- oder endgültigem Parse-Fehler.
+
+    Zwei Fehlerklassen werden getrennt behandelt:
+      - API-/Transportfehler (Limit, Auth, Netzwerk): erneuter Versuch mit
+        JSON-Hinweis hilft nicht -> sofort abbrechen und für die Frühwarnung
+        vermerken.
+      - Parse-Fehler (kein gültiges JSON): einmal mit striktem JSON-Hinweis
+        wiederholen (wie bisher, Spec §11).
+    """
+    last_parse_err = None
     for attempt in range(2):
         try:
             raw = _call_claude(system, user, max_tokens)
+        except Exception as exc:
+            _record_api_error(exc)
+            print(f"  [warn] Claude-API-Fehler: {exc}")
+            return None
+        try:
             return _parse_json(raw)
         except Exception as exc:
-            last_err = exc
+            last_parse_err = exc
             user += ("\n\nWICHTIG: Antworte ausschließlich mit gültigem JSON, "
                      "ohne weiteren Text, ohne Markdown.")
-    print(f"  [warn] Claude-Antwort nicht parsebar: {last_err}")
+    print(f"  [warn] Claude-Antwort nicht parsebar: {last_parse_err}")
     return None
 
 
@@ -255,15 +309,35 @@ def _stories_from_response(parsed, mail: dict) -> list[dict]:
     return stories
 
 
-def analyze_newsletters(newsletters: list[dict]) -> list[dict]:
-    """Zerlegt alle Newsletter-Mails in eine flache Story-Liste."""
+def analyze_newsletters(newsletters: list[dict]) -> tuple[list[dict], list[str]]:
+    """Zerlegt alle Newsletter-Mails in eine flache Story-Liste.
+
+    Rückgabe: (stories, processed_ids).
+      - stories: alle extrahierten Newsletter-Stories.
+      - processed_ids: Message-IDs der Mails, deren Claude-Analyse ERFOLGREICH
+        war (auch wenn 0 Stories herauskamen, z. B. reine Werbung). NUR diese
+        sollen als "gesehen" markiert werden.
+
+    Mails, deren Analyse hart fehlschlägt (z. B. API-Limit/Netzwerk), landen
+    NICHT in processed_ids — so werden sie im nächsten Lauf erneut versucht und
+    gehen bei einem Claude-Ausfall nicht verloren.
+    """
     stories: list[dict] = []
+    processed_ids: list[str] = []
+    failed = 0
     for mail in newsletters:
         system, user = _build_newsletter_prompt(mail)
         parsed = _call_and_parse(system, user, max_tokens=2048)
         if parsed is None:
-            continue  # betroffene Mail liefert keine Stories (Spec §11)
+            failed += 1
+            continue  # Analyse fehlgeschlagen -> NICHT als gesehen markieren
+        if mail.get("message_id"):
+            processed_ids.append(mail["message_id"])
         stories.extend(_stories_from_response(parsed, mail))
-    print(f"[analyst] {len(stories)} Newsletter-Stories aus "
-          f"{len(newsletters)} Mails extrahiert")
-    return stories
+    msg = (f"[analyst] {len(stories)} Newsletter-Stories aus "
+           f"{len(newsletters)} Mails extrahiert")
+    if failed:
+        msg += (f" ({failed} Mail(s) wegen Analyse-Fehler übersprungen, "
+                "bleiben für den nächsten Lauf ungesehen)")
+    print(msg)
+    return stories, processed_ids
