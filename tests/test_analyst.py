@@ -68,15 +68,28 @@ class NewsletterPathTests(unittest.TestCase):
                 '{"headline": "Story ohne Link", "url": "", "priority": "mittel"}'
                 ']}')
         with patch.object(A, "_call_claude", return_value=resp):
-            stories = A.analyze_newsletters([self._mail()])
+            stories, processed = A.analyze_newsletters([self._mail()])
         self.assertEqual(len(stories), 2)                       # URL-lose Story verworfen
         self.assertEqual(stories[0]["source_newsletter"], "AI Weekly")  # aus Sender
         self.assertEqual(len(stories[1]["headline"].split()), 10)       # hart gekürzt
         self.assertTrue(all(s["url"].startswith("http") for s in stories))
+        self.assertEqual(processed, ["m1"])  # erfolgreiche Mail -> als gesehen markierbar
 
     def test_decompose_fallback_yields_nothing(self):
+        # Claude-Ausfall: keine Stories UND keine processed_ids -> Mail bleibt
+        # ungesehen und wird im nächsten Lauf erneut versucht (kein Verlust).
         with patch.object(A, "_call_claude", return_value="kaputt"):
-            self.assertEqual(A.analyze_newsletters([self._mail()]), [])
+            stories, processed = A.analyze_newsletters([self._mail()])
+        self.assertEqual(stories, [])
+        self.assertEqual(processed, [])
+
+    def test_decompose_marks_seen_even_with_zero_stories(self):
+        # Claude antwortet gültig, aber ohne brauchbare Stories (z. B. reine
+        # Werbung): Mail gilt als verarbeitet -> wird als gesehen markiert.
+        with patch.object(A, "_call_claude", return_value='{"stories": []}'):
+            stories, processed = A.analyze_newsletters([self._mail()])
+        self.assertEqual(stories, [])
+        self.assertEqual(processed, ["m1"])
 
 
 if __name__ == "__main__":

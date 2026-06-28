@@ -255,15 +255,35 @@ def _stories_from_response(parsed, mail: dict) -> list[dict]:
     return stories
 
 
-def analyze_newsletters(newsletters: list[dict]) -> list[dict]:
-    """Zerlegt alle Newsletter-Mails in eine flache Story-Liste."""
+def analyze_newsletters(newsletters: list[dict]) -> tuple[list[dict], list[str]]:
+    """Zerlegt alle Newsletter-Mails in eine flache Story-Liste.
+
+    Rückgabe: (stories, processed_ids).
+      - stories: alle extrahierten Newsletter-Stories.
+      - processed_ids: Message-IDs der Mails, deren Claude-Analyse ERFOLGREICH
+        war (auch wenn 0 Stories herauskamen, z. B. reine Werbung). NUR diese
+        sollen als "gesehen" markiert werden.
+
+    Mails, deren Analyse hart fehlschlägt (z. B. API-Limit/Netzwerk), landen
+    NICHT in processed_ids — so werden sie im nächsten Lauf erneut versucht und
+    gehen bei einem Claude-Ausfall nicht verloren.
+    """
     stories: list[dict] = []
+    processed_ids: list[str] = []
+    failed = 0
     for mail in newsletters:
         system, user = _build_newsletter_prompt(mail)
         parsed = _call_and_parse(system, user, max_tokens=2048)
         if parsed is None:
-            continue  # betroffene Mail liefert keine Stories (Spec §11)
+            failed += 1
+            continue  # Analyse fehlgeschlagen -> NICHT als gesehen markieren
+        if mail.get("message_id"):
+            processed_ids.append(mail["message_id"])
         stories.extend(_stories_from_response(parsed, mail))
-    print(f"[analyst] {len(stories)} Newsletter-Stories aus "
-          f"{len(newsletters)} Mails extrahiert")
-    return stories
+    msg = (f"[analyst] {len(stories)} Newsletter-Stories aus "
+           f"{len(newsletters)} Mails extrahiert")
+    if failed:
+        msg += (f" ({failed} Mail(s) wegen Analyse-Fehler übersprungen, "
+                "bleiben für den nächsten Lauf ungesehen)")
+    print(msg)
+    return stories, processed_ids

@@ -59,10 +59,12 @@ def main() -> int:
     # 4. RSS bewerten
     analyzed = analyst.analyze_all(collected)
 
-    # 5. Newsletter zerlegen
+    # 5. Newsletter zerlegen. processed_ids = nur erfolgreich analysierte Mails;
+    #    bei Claude-Ausfall bleiben Mails ungesehen und werden später erneut versucht.
     stories: list[dict] = []
+    processed_ids: list[str] = []
     try:
-        stories = analyst.analyze_newsletters(newsletters)
+        stories, processed_ids = analyst.analyze_newsletters(newsletters)
     except Exception as exc:
         print(f"[run] Newsletter-Analyse fehlgeschlagen: {exc}")
 
@@ -88,10 +90,12 @@ def main() -> int:
     except Exception as exc:
         print(f"[run] E-Mail-Fehler (ignoriert): {exc}")
 
-    # 9. seen_ids aktualisieren (alle verarbeiteten Mails als gesehen markieren)
-    if newsletters:
+    # 9. seen_ids aktualisieren — NUR Mails, deren Analyse erfolgreich war.
+    #    Bei Claude-Ausfall (z. B. API-Limit) bleiben die Mails ungesehen und
+    #    werden im nächsten Lauf erneut verarbeitet (kein stiller Verlust).
+    if processed_ids:
         try:
-            gmail_source.mark_seen([m["message_id"] for m in newsletters])
+            gmail_source.mark_seen(processed_ids)
         except Exception as exc:
             print(f"[run] seen_ids-Update fehlgeschlagen (ignoriert): {exc}")
 
