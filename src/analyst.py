@@ -30,6 +30,47 @@ _PRIO_ALIASES = {
 
 _client = None
 
+# Fehlerspeicher des aktuellen Laufs: alle Claude-API-/Transportfehler (kein
+# JSON-Parse-Problem). Basis für die Frühwarnung in run.py. Vor jedem Lauf via
+# reset_api_errors() leeren.
+_api_errors: list[str] = []
+
+# Marker für NICHT selbstheilende Fehler: Lauf soll sichtbar fehlschlagen statt
+# still ein leeres Briefing zu senden. Bewusst auf Klartext-Substrings geprüft
+# (robust gegenüber SDK-Versionen).
+_HARD_BLOCK_MARKERS = (
+    "usage limit",        # "reached your specified API usage limits"
+    "credit balance",     # Guthaben aufgebraucht
+    "authentication",     # 401 — ungültiger/abgelaufener API-Key
+    "invalid x-api-key",
+    "permission",         # 403 — Key ohne Berechtigung
+)
+
+
+def reset_api_errors() -> None:
+    """Leert den Fehlerspeicher. Zu Beginn jedes Laufs aufrufen."""
+    _api_errors.clear()
+
+
+def _record_api_error(exc: Exception) -> None:
+    _api_errors.append(str(exc))
+
+
+def api_errors() -> list[str]:
+    """Alle in diesem Lauf aufgetretenen Claude-API-/Transportfehler."""
+    return list(_api_errors)
+
+
+def limit_reason() -> str | None:
+    """Lesbarer Grund, falls ein nicht selbstheilender Claude-Fehler auftrat
+    (Usage-Limit, fehlendes Guthaben, ungültiger API-Key, fehlende Berechtigung).
+    Sonst None. Frühwarn-Signal für run.py."""
+    for err in _api_errors:
+        low = err.lower()
+        if any(marker in low for marker in _HARD_BLOCK_MARKERS):
+            return err
+    return None
+
 
 def _get_client():
     """Lazy-Init des Anthropic-Clients (liest ANTHROPIC_API_KEY aus der Env)."""
@@ -106,17 +147,30 @@ def _parse_json(text: str):
 
 
 def _call_and_parse(system: str, user: str, max_tokens: int):
-    """Claude-Aufruf mit 1× Retry; None bei endgültigem Parse-Fehler."""
-    last_err = None
+    """Claude-Aufruf; None bei API- oder endgültigem Parse-Fehler.
+
+    Zwei Fehlerklassen werden getrennt behandelt:
+      - API-/Transportfehler (Limit, Auth, Netzwerk): erneuter Versuch mit
+        JSON-Hinweis hilft nicht -> sofort abbrechen und für die Frühwarnung
+        vermerken.
+      - Parse-Fehler (kein gültiges JSON): einmal mit striktem JSON-Hinweis
+        wiederholen (wie bisher, Spec §11).
+    """
+    last_parse_err = None
     for attempt in range(2):
         try:
             raw = _call_claude(system, user, max_tokens)
+        except Exception as exc:
+            _record_api_error(exc)
+            print(f"  [warn] Claude-API-Fehler: {exc}")
+            return None
+        try:
             return _parse_json(raw)
         except Exception as exc:
-            last_err = exc
+            last_parse_err = exc
             user += ("\n\nWICHTIG: Antworte ausschließlich mit gültigem JSON, "
                      "ohne weiteren Text, ohne Markdown.")
-    print(f"  [warn] Claude-Antwort nicht parsebar: {last_err}")
+    print(f"  [warn] Claude-Antwort nicht parsebar: {last_parse_err}")
     return None
 
 

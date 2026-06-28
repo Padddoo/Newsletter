@@ -92,5 +92,48 @@ class NewsletterPathTests(unittest.TestCase):
         self.assertEqual(processed, ["m1"])
 
 
+class ApiErrorTrackingTests(unittest.TestCase):
+    def setUp(self):
+        A.reset_api_errors()
+        self.addCleanup(A.reset_api_errors)
+
+    def _boom(self, msg):
+        def _raise(system, user, max_tokens=4096):
+            raise RuntimeError(msg)
+        return _raise
+
+    def test_limit_error_is_recorded_and_detected(self):
+        msg = ("Error code: 400 - {'error': {'message': 'You have reached your "
+               "specified API usage limits. ...'}}")
+        with patch.object(A, "_call_claude", self._boom(msg)):
+            stories, processed = A.analyze_newsletters(
+                [{"message_id": "m1", "sender": "x", "subject": "s",
+                  "body_text": "b", "links": []}])
+        self.assertEqual(stories, [])
+        self.assertEqual(processed, [])              # nichts als gesehen markieren
+        self.assertEqual(len(A.api_errors()), 1)
+        self.assertIsNotNone(A.limit_reason())       # Frühwarnung greift
+
+    def test_parse_error_is_not_an_api_error(self):
+        # Gültiger Call, aber Müll-Antwort: das ist KEIN API-Fehler -> keine
+        # Frühwarnung, damit ein einzelner Parse-Ausreißer nicht den Lauf rotfärbt.
+        with patch.object(A, "_call_claude", return_value="kein json"):
+            stories, processed = A.analyze_newsletters(
+                [{"message_id": "m1", "sender": "x", "subject": "s",
+                  "body_text": "b", "links": []}])
+        self.assertEqual(stories, [])
+        self.assertEqual(A.api_errors(), [])
+        self.assertIsNone(A.limit_reason())
+
+    def test_reset_clears_errors(self):
+        with patch.object(A, "_call_claude", self._boom("authentication_error")):
+            A.analyze_newsletters([{"message_id": "m1", "sender": "x",
+                                    "subject": "s", "body_text": "b", "links": []}])
+        self.assertIsNotNone(A.limit_reason())
+        A.reset_api_errors()
+        self.assertEqual(A.api_errors(), [])
+        self.assertIsNone(A.limit_reason())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -44,6 +44,7 @@ def _load_dotenv(path: str = ".env") -> None:
 
 def main() -> int:
     _load_dotenv()
+    analyst.reset_api_errors()
 
     # 2. RSS
     collected = collector.collect_all()
@@ -67,6 +68,19 @@ def main() -> int:
         stories, processed_ids = analyst.analyze_newsletters(newsletters)
     except Exception as exc:
         print(f"[run] Newsletter-Analyse fehlgeschlagen: {exc}")
+
+    # 5b. FRÜHWARNUNG: Claude nicht selbstheilend blockiert (API-Limit, Guthaben,
+    #     ungültiger Key, fehlende Berechtigung)? Dann ist das Briefing wertlos
+    #     (keine Bewertungen, keine Newsletter-Stories). Sichtbar fehlschlagen
+    #     statt still ein leeres Briefing zu verschicken — kein Versand, kein
+    #     seen_ids-Update (Newsletter bleiben für den nächsten Lauf erhalten).
+    reason = analyst.limit_reason()
+    if reason:
+        print("[run] FEHLER: Claude-API blockiert — Briefing wäre unvollständig.")
+        print(f"[run] Grund: {reason}")
+        print("[run] Kein Versand (E-Mail/Telegram), kein seen_ids-Update. "
+              "Bitte API-Limit/Key in der Anthropic Console prüfen.")
+        return 2
 
     # 6. Dashboard (Pflicht — ohne gültiges HTML kein Deploy)
     try:

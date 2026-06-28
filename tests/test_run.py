@@ -107,6 +107,19 @@ class RunIntegrationTests(unittest.TestCase):
         # zweiter Lauf: <m1@tldr> bereits gesehen -> keine Newsletter-Story mehr
         self.assertNotIn("News mit Link", self._html())
 
+    def test_api_limit_fails_loudly_and_sends_nothing(self):
+        # Claude-Limit: Lauf soll sichtbar fehlschlagen (Exit != 0), KEIN
+        # Briefing verschicken und nichts als gesehen markieren.
+        def limit_claude(system, user, max_tokens=4096):
+            raise RuntimeError(
+                "Error code: 400 - You have reached your specified API usage limits.")
+        with patch.object(analyst, "_call_claude", limit_claude):
+            rc = run.main()
+        self.assertNotEqual(rc, 0)
+        self.assertEqual(len(self.smtp_sent), 0)     # keine E-Mail
+        self.assertEqual(len(self.tg), 0)            # kein Telegram
+        self.assertEqual(gmail_source.load_seen_ids(), [])  # nichts verbrannt
+
     def test_gmail_outage_does_not_block_rss(self):
         def boom():
             raise RuntimeError("IMAP-Login fehlgeschlagen simuliert")
