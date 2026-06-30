@@ -14,11 +14,25 @@ Scope v1: nur das Thema "ai_news" ist aktiv. "medtech" ist geparkt
 # ---------------------------------------------------------------------------
 # Claude / Anthropic
 # ---------------------------------------------------------------------------
+# Default-Modell (Fallback für Prozesse ohne eigene Zuordnung).
 ANTHROPIC_MODEL = "claude-sonnet-4-6"
+
+# Modell je Prozess (Kostenoptimierung): Die Newsletter-Zerlegung ist reine
+# Extraktion und der mit Abstand größte Token-Verbraucher — dafür reicht das
+# günstigere Haiku ($1/$5 statt $3/$15). Die RSS-Bewertung bleibt auf Sonnet.
+ANTHROPIC_MODELS = {
+    "rss": "claude-sonnet-4-6",
+    "newsletter": "claude-haiku-4-5",
+}
 
 # Kostendeckel: maximale Anzahl RSS-Artikel pro Thema, die an Claude zur
 # Bewertung gehen (nach Keyword-Sortierung die Top-N).
 MAX_ARTICLES_TO_RATE = 30
+
+# Newsletter-Zerlegung: so viele Mails werden in EINEM Claude-Aufruf gebündelt
+# (statt 1 Call pro Mail). Spart wiederholten Prompt-Overhead und Calls;
+# kleine Gruppen begrenzen Prompt-Größe und Fehler-Auswirkung pro Call.
+NEWSLETTER_BATCH_SIZE = 5
 
 # ---------------------------------------------------------------------------
 # Headlines / Cross-Posting
@@ -99,7 +113,7 @@ NEWSLETTER = {
     "only_unread": True,             # entspricht "is:unread"
     "lookback_days": 2,              # entspricht "newer_than:2d"
     "max_messages": 25,              # Kostendeckel
-    "max_body_chars": 6000,          # Body-Kürzung pro Mail (Token-Deckel)
+    "max_body_chars": 3500,          # Body-Kürzung pro Mail (Token-Deckel)
 
     "profile": (
         "Zerlege die Newsletter-Mail in ihre einzelnen Stories/Items. Extrahiere "

@@ -32,7 +32,7 @@ from html.parser import HTMLParser
 from config import IMAP_HOST, NEWSLETTER, SEEN_IDS_MAX, STATE_FILE
 
 _URL_RE = re.compile(r"https?://[^\s<>()\"']+")
-_MAX_LINKS = 60  # Deckel pro Mail, damit der Claude-Prompt nicht explodiert
+_MAX_LINKS = 35  # Deckel pro Mail, damit der Claude-Prompt nicht explodiert
 _MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
