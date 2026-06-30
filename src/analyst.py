@@ -19,7 +19,8 @@ from __future__ import annotations
 import json
 import re
 
-from config import ANTHROPIC_MODEL, HEADLINE_MAX_WORDS, NEWSLETTER, TOPICS
+from config import (ANTHROPIC_MODEL, ANTHROPIC_MODELS, HEADLINE_MAX_WORDS,
+                    NEWSLETTER, NEWSLETTER_BATCH_SIZE, TOPICS)
 
 _PRIO_RANK = {"hoch": 3, "mittel": 2, "niedrig": 1}
 _PRIO_ALIASES = {
@@ -95,23 +96,33 @@ def reset_usage() -> None:
     _usage.clear()
 
 
-def _record_usage(label: str, usage) -> None:
-    agg = _usage.setdefault(label, {"calls": 0, **{f: 0 for f in _USAGE_FIELDS}})
+def _model_for(label: str) -> str:
+    """Welches Claude-Modell ein Prozess-Label nutzt (Fallback: ANTHROPIC_MODEL)."""
+    return ANTHROPIC_MODELS.get(label, ANTHROPIC_MODEL)
+
+
+def _record_usage(label: str, usage, model: str | None = None) -> None:
+    agg = _usage.setdefault(
+        label, {"calls": 0, "model": model or _model_for(label),
+                **{f: 0 for f in _USAGE_FIELDS}})
+    if model:
+        agg["model"] = model
     agg["calls"] += 1
     for field in _USAGE_FIELDS:
         agg[field] += int(getattr(usage, field, 0) or 0)
 
 
 def usage_summary() -> dict[str, dict]:
-    """Nutzung je Prozess-Label: {label: {calls, input_tokens, output_tokens, ...}}."""
+    """Nutzung je Prozess-Label: {label: {calls, model, input_tokens, ...}}."""
     return {label: dict(agg) for label, agg in _usage.items()}
 
 
-def estimated_cost_usd(model: str = ANTHROPIC_MODEL) -> float:
-    """Geschätzte Kosten des Laufs in USD (inkl. Cache-Auf-/Abschlägen)."""
-    in_price, out_price = _PRICING_USD_PER_MTOK.get(model, (0.0, 0.0))
+def estimated_cost_usd() -> float:
+    """Geschätzte Kosten des Laufs in USD — je Prozess mit dessen Modellpreis
+    (inkl. Cache-Auf-/Abschlägen)."""
     cost = 0.0
     for agg in _usage.values():
+        in_price, out_price = _PRICING_USD_PER_MTOK.get(agg.get("model", ""), (0.0, 0.0))
         cost += agg["input_tokens"] / 1_000_000 * in_price
         cost += agg["cache_read_input_tokens"] / 1_000_000 * in_price * 0.1
         cost += agg["cache_creation_input_tokens"] / 1_000_000 * in_price * 1.25
@@ -130,13 +141,14 @@ def _get_client():
 
 def _call_claude(system: str, user: str, max_tokens: int = 4096) -> str:
     """Ein Claude-Aufruf; gibt den zusammengesetzten Text-Inhalt zurück."""
+    model = _model_for(_current_label)
     resp = _get_client().messages.create(
-        model=ANTHROPIC_MODEL,
+        model=model,
         max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],
     )
-    _record_usage(_current_label, getattr(resp, "usage", None))
+    _record_usage(_current_label, getattr(resp, "usage", None), model)
     return "".join(
         block.text for block in resp.content
         if getattr(block, "type", "") == "text"
@@ -309,39 +321,50 @@ def analyze_all(collected: dict[str, list[dict]]) -> dict[str, list[dict]]:
 # ---------------------------------------------------------------------------
 # (b) Newsletter-Zerlegung
 # ---------------------------------------------------------------------------
-def _build_newsletter_prompt(mail: dict) -> tuple[str, str]:
-    links_list = "\n".join(
-        f"{i}. {anchor or '(kein Text)'} -> {url}"
-        for i, (anchor, url) in enumerate(mail.get("links", []))
-    )
+def _build_newsletter_batch_prompt(mails: list[dict]) -> tuple[str, str]:
+    """Ein Prompt für mehrere Mails (Bündelung spart wiederholten Overhead)."""
     system = (
         "Du bist ein präziser Nachrichten-Analyst für AI-Themen. "
         f"{NEWSLETTER['profile']} "
         "Antworte ausschließlich mit gültigem JSON, ohne Markdown."
     )
+    blocks = []
+    for i, mail in enumerate(mails):
+        links_list = "\n".join(
+            f"  {j}. {anchor or '(kein Text)'} -> {url}"
+            for j, (anchor, url) in enumerate(mail.get("links", []))
+        )
+        blocks.append(
+            f"=== Mail {i} ===\n"
+            f"Absender: {mail.get('sender', '')}\n"
+            f"Betreff: {mail.get('subject', '')}\n"
+            f"Verfügbare Links:\n{links_list or '  (keine Links gefunden)'}\n"
+            f"Newsletter-Text:\n{mail.get('body_text', '')}"
+        )
     user = (
-        f"Newsletter-Absender: {mail.get('sender', '')}\n"
-        f"Betreff: {mail.get('subject', '')}\n\n"
-        f"Verfügbare Links (Index, Anker, URL):\n{links_list or '(keine Links gefunden)'}\n\n"
-        f"Newsletter-Text:\n{mail.get('body_text', '')}\n\n"
-        "Zerlege diesen Newsletter in seine einzelnen AI-relevanten Stories. Pro Story:\n"
+        "Zerlege die folgenden Newsletter-Mails in ihre einzelnen AI-relevanten "
+        "Stories. Pro Story:\n"
+        "- mail_index: Nummer der Mail (siehe '=== Mail N ==='), aus der die Story stammt\n"
         "- headline: deutsche Headline, MAXIMAL 10 Wörter, nüchtern, kein Clickbait\n"
-        "- url: der passende vollständige Quell-Link aus der Liste oben\n"
+        "- url: der passende vollständige Quell-Link aus der Liste DIESER Mail\n"
         "- source_newsletter: Name des Newsletters\n"
         '- priority: "hoch", "mittel" oder "niedrig"\n\n'
         "Ignoriere Werbung, Sponsoren-Blöcke, Job-Listings und reine Meinungsstücke.\n\n"
+        f"{chr(10).join(blocks)}\n\n"
         "Antworte AUSSCHLIESSLICH mit JSON dieser Form:\n"
-        '{"stories": [{"headline": "...", "url": "https://...", '
+        '{"stories": [{"mail_index": 0, "headline": "...", "url": "https://...", '
         '"source_newsletter": "...", "priority": "hoch"}]}'
     )
     return system, user
 
 
-def _stories_from_response(parsed, mail: dict) -> list[dict]:
+def _stories_from_batch_response(parsed, mails: list[dict]) -> list[dict]:
     raw_stories = parsed.get("stories", []) if isinstance(parsed, dict) else parsed
     if not isinstance(raw_stories, list):
         return []
-    default_source = _clean_sender(mail.get("sender", "")) or NEWSLETTER["name"]
+    defaults = [
+        _clean_sender(m.get("sender", "")) or NEWSLETTER["name"] for m in mails
+    ]
     stories = []
     for s in raw_stories:
         if not isinstance(s, dict):
@@ -352,17 +375,31 @@ def _stories_from_response(parsed, mail: dict) -> list[dict]:
         headline = truncate_headline((s.get("headline") or "").strip())
         if not headline:
             continue
+        try:
+            idx = int(s.get("mail_index", 0))
+        except (TypeError, ValueError):
+            idx = 0
+        if not 0 <= idx < len(defaults):
+            idx = 0
         stories.append({
             "headline": headline,
             "url": url,
-            "source_newsletter": (s.get("source_newsletter") or "").strip() or default_source,
+            "source_newsletter": (s.get("source_newsletter") or "").strip() or defaults[idx],
             "priority": _normalize_priority(s.get("priority")),
         })
     return stories
 
 
+def _chunks(seq: list, size: int):
+    for i in range(0, len(seq), size):
+        yield seq[i:i + size]
+
+
 def analyze_newsletters(newsletters: list[dict]) -> tuple[list[dict], list[str]]:
     """Zerlegt alle Newsletter-Mails in eine flache Story-Liste.
+
+    Mails werden in Gruppen (NEWSLETTER_BATCH_SIZE) gebündelt: ein Claude-Aufruf
+    je Gruppe statt je Mail — spart wiederholten Prompt-Overhead und Calls.
 
     Rückgabe: (stories, processed_ids).
       - stories: alle extrahierten Newsletter-Stories.
@@ -370,26 +407,29 @@ def analyze_newsletters(newsletters: list[dict]) -> tuple[list[dict], list[str]]
         war (auch wenn 0 Stories herauskamen, z. B. reine Werbung). NUR diese
         sollen als "gesehen" markiert werden.
 
-    Mails, deren Analyse hart fehlschlägt (z. B. API-Limit/Netzwerk), landen
-    NICHT in processed_ids — so werden sie im nächsten Lauf erneut versucht und
-    gehen bei einem Claude-Ausfall nicht verloren.
+    Scheitert ein Gruppen-Aufruf hart (z. B. API-Limit/Netzwerk), bleibt die
+    GANZE Gruppe ungesehen und wird im nächsten Lauf erneut versucht — kein
+    stiller Verlust.
     """
     stories: list[dict] = []
     processed_ids: list[str] = []
-    failed = 0
-    for mail in newsletters:
-        system, user = _build_newsletter_prompt(mail)
-        parsed = _call_and_parse(system, user, max_tokens=2048, label="newsletter")
+    failed_mails = 0
+    n_calls = 0
+    for chunk in _chunks(newsletters, max(1, NEWSLETTER_BATCH_SIZE)):
+        system, user = _build_newsletter_batch_prompt(chunk)
+        parsed = _call_and_parse(system, user, max_tokens=4096, label="newsletter")
+        n_calls += 1
         if parsed is None:
-            failed += 1
-            continue  # Analyse fehlgeschlagen -> NICHT als gesehen markieren
-        if mail.get("message_id"):
-            processed_ids.append(mail["message_id"])
-        stories.extend(_stories_from_response(parsed, mail))
+            failed_mails += len(chunk)
+            continue  # ganze Gruppe NICHT als gesehen markieren
+        for mail in chunk:
+            if mail.get("message_id"):
+                processed_ids.append(mail["message_id"])
+        stories.extend(_stories_from_batch_response(parsed, chunk))
     msg = (f"[analyst] {len(stories)} Newsletter-Stories aus "
-           f"{len(newsletters)} Mails extrahiert")
-    if failed:
-        msg += (f" ({failed} Mail(s) wegen Analyse-Fehler übersprungen, "
+           f"{len(newsletters)} Mails in {n_calls} Aufruf(en) extrahiert")
+    if failed_mails:
+        msg += (f" ({failed_mails} Mail(s) wegen Analyse-Fehler übersprungen, "
                 "bleiben für den nächsten Lauf ungesehen)")
     print(msg)
     return stories, processed_ids

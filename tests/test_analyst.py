@@ -75,6 +75,26 @@ class NewsletterPathTests(unittest.TestCase):
         self.assertTrue(all(s["url"].startswith("http") for s in stories))
         self.assertEqual(processed, ["m1"])  # erfolgreiche Mail -> als gesehen markierbar
 
+    def test_batches_multiple_mails_into_one_call(self):
+        mails = [
+            {"message_id": "m1", "sender": '"AI Weekly" <hi@aiweekly.co>',
+             "subject": "Issue 5", "body_text": "...", "links": []},
+            {"message_id": "m2", "sender": '"TLDR" <hi@tldr.tech>',
+             "subject": "Issue 9", "body_text": "...", "links": []},
+        ]
+        resp = ('{"stories": ['
+                '{"mail_index": 0, "headline": "Story aus Mail null", "url": "https://a/x", "priority": "hoch"},'
+                '{"mail_index": 1, "headline": "Story aus Mail eins", "url": "https://b/y", "priority": "mittel"}'
+                ']}')
+        from unittest.mock import MagicMock
+        fake = MagicMock(return_value=resp)
+        with patch.object(A, "_call_claude", fake):
+            stories, processed = A.analyze_newsletters(mails)
+        self.assertEqual(fake.call_count, 1)                 # gebündelt: 1 Call für 2 Mails
+        self.assertEqual(processed, ["m1", "m2"])
+        self.assertEqual(stories[0]["source_newsletter"], "AI Weekly")   # mail_index 0
+        self.assertEqual(stories[1]["source_newsletter"], "TLDR")        # mail_index 1
+
     def test_decompose_fallback_yields_nothing(self):
         # Claude-Ausfall: keine Stories UND keine processed_ids -> Mail bleibt
         # ungesehen und wird im nächsten Lauf erneut versucht (kein Verlust).
@@ -158,17 +178,20 @@ class UsageTrackingTests(unittest.TestCase):
         self.assertEqual(s["newsletter"]["output_tokens"], 30)
         self.assertEqual(s["rss"]["calls"], 1)
 
-    def test_cost_estimate_sonnet(self):
+    def test_cost_estimate_per_process_model(self):
+        # rss -> Sonnet ($3/$15), newsletter -> Haiku ($1/$5): je Prozess sein Preis.
         A._record_usage("rss", _FakeUsage(input_tokens=1_000_000,
                                           output_tokens=1_000_000))
-        # 1M in * $3 + 1M out * $15 = $18
-        self.assertAlmostEqual(A.estimated_cost_usd("claude-sonnet-4-6"), 18.0, places=4)
+        A._record_usage("newsletter", _FakeUsage(input_tokens=1_000_000,
+                                                  output_tokens=1_000_000))
+        # Sonnet: 3 + 15 = 18 ; Haiku: 1 + 5 = 6 ; gesamt 24
+        self.assertAlmostEqual(A.estimated_cost_usd(), 24.0, places=4)
 
     def test_cost_estimate_handles_cache_and_none(self):
         A._record_usage("rss", _FakeUsage(cache_read_input_tokens=1_000_000))
         A._record_usage("rss", None)  # darf nicht crashen
-        # 1M Cache-Read * $3 * 0.1 = $0.30
-        self.assertAlmostEqual(A.estimated_cost_usd("claude-sonnet-4-6"), 0.30, places=4)
+        # 1M Cache-Read * $3 (Sonnet) * 0.1 = $0.30
+        self.assertAlmostEqual(A.estimated_cost_usd(), 0.30, places=4)
 
     def test_reset_clears_usage(self):
         A._record_usage("rss", _FakeUsage(input_tokens=10))
