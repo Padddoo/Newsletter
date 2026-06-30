@@ -42,9 +42,28 @@ def _load_dotenv(path: str = ".env") -> None:
             os.environ.setdefault(key.strip(), val.strip().strip('"').strip("'"))
 
 
+def _log_usage() -> None:
+    """Token-/Kosten-Zusammenfassung des Laufs (je Prozess + Gesamt)."""
+    summary = analyst.usage_summary()
+    if not summary:
+        return
+    labels = {"rss": "RSS-Bewertung", "newsletter": "Newsletter-Zerlegung"}
+    total_in = total_out = 0
+    for key, agg in summary.items():
+        billed_in = (agg["input_tokens"] + agg["cache_read_input_tokens"]
+                     + agg["cache_creation_input_tokens"])
+        total_in += billed_in
+        total_out += agg["output_tokens"]
+        print(f"[usage] {labels.get(key, key)}: {agg['calls']} Call(s), "
+              f"{billed_in} in / {agg['output_tokens']} out")
+    print(f"[usage] Gesamt: {total_in} in / {total_out} out "
+          f"≈ ${analyst.estimated_cost_usd():.4f}")
+
+
 def main() -> int:
     _load_dotenv()
     analyst.reset_api_errors()
+    analyst.reset_usage()
 
     # 2. RSS
     collected = collector.collect_all()
@@ -115,6 +134,7 @@ def main() -> int:
 
     n_articles = sum(len(v) for v in analyzed.values())
     print(f"[run] fertig: {n_articles} RSS-Artikel, {len(stories)} Newsletter-Stories.")
+    _log_usage()
     return 0
 
 

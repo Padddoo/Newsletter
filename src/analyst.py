@@ -72,6 +72,53 @@ def limit_reason() -> str | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# Token-/Kosten-Messung pro Lauf
+# ---------------------------------------------------------------------------
+# Aggregierte Claude-Nutzung je Prozess-Label ("rss" / "newsletter"). Vor jedem
+# Lauf via reset_usage() leeren; run.py gibt am Ende eine Zusammenfassung aus.
+_usage: dict[str, dict] = {}
+_current_label = "rss"
+
+# Preise in USD pro 1 Mio. Tokens (input, output) laut Anthropic-Pricing.
+_PRICING_USD_PER_MTOK = {
+    "claude-sonnet-4-6": (3.00, 15.00),
+    "claude-haiku-4-5": (1.00, 5.00),
+    "claude-opus-4-8": (5.00, 25.00),
+}
+_USAGE_FIELDS = ("input_tokens", "output_tokens",
+                 "cache_read_input_tokens", "cache_creation_input_tokens")
+
+
+def reset_usage() -> None:
+    """Leert die Nutzungsstatistik. Zu Beginn jedes Laufs aufrufen."""
+    _usage.clear()
+
+
+def _record_usage(label: str, usage) -> None:
+    agg = _usage.setdefault(label, {"calls": 0, **{f: 0 for f in _USAGE_FIELDS}})
+    agg["calls"] += 1
+    for field in _USAGE_FIELDS:
+        agg[field] += int(getattr(usage, field, 0) or 0)
+
+
+def usage_summary() -> dict[str, dict]:
+    """Nutzung je Prozess-Label: {label: {calls, input_tokens, output_tokens, ...}}."""
+    return {label: dict(agg) for label, agg in _usage.items()}
+
+
+def estimated_cost_usd(model: str = ANTHROPIC_MODEL) -> float:
+    """Geschätzte Kosten des Laufs in USD (inkl. Cache-Auf-/Abschlägen)."""
+    in_price, out_price = _PRICING_USD_PER_MTOK.get(model, (0.0, 0.0))
+    cost = 0.0
+    for agg in _usage.values():
+        cost += agg["input_tokens"] / 1_000_000 * in_price
+        cost += agg["cache_read_input_tokens"] / 1_000_000 * in_price * 0.1
+        cost += agg["cache_creation_input_tokens"] / 1_000_000 * in_price * 1.25
+        cost += agg["output_tokens"] / 1_000_000 * out_price
+    return cost
+
+
 def _get_client():
     """Lazy-Init des Anthropic-Clients (liest ANTHROPIC_API_KEY aus der Env)."""
     global _client
@@ -89,6 +136,7 @@ def _call_claude(system: str, user: str, max_tokens: int = 4096) -> str:
         system=system,
         messages=[{"role": "user", "content": user}],
     )
+    _record_usage(_current_label, getattr(resp, "usage", None))
     return "".join(
         block.text for block in resp.content
         if getattr(block, "type", "") == "text"
@@ -146,7 +194,7 @@ def _parse_json(text: str):
     raise ValueError("kein gültiges JSON in der Antwort")
 
 
-def _call_and_parse(system: str, user: str, max_tokens: int):
+def _call_and_parse(system: str, user: str, max_tokens: int, label: str = "rss"):
     """Claude-Aufruf; None bei API- oder endgültigem Parse-Fehler.
 
     Zwei Fehlerklassen werden getrennt behandelt:
@@ -155,7 +203,11 @@ def _call_and_parse(system: str, user: str, max_tokens: int):
         vermerken.
       - Parse-Fehler (kein gültiges JSON): einmal mit striktem JSON-Hinweis
         wiederholen (wie bisher, Spec §11).
+
+    `label` ordnet die Token-Nutzung dem Prozess zu ("rss" / "newsletter").
     """
+    global _current_label
+    _current_label = label
     last_parse_err = None
     for attempt in range(2):
         try:
@@ -231,7 +283,7 @@ def _sort_by_priority(articles: list[dict]) -> list[dict]:
 
 def _rate_topic(topic: dict, articles: list[dict]) -> list[dict]:
     system, user = _build_rss_prompt(topic, articles)
-    parsed = _call_and_parse(system, user, max_tokens=4096)
+    parsed = _call_and_parse(system, user, max_tokens=4096, label="rss")
     if parsed is None:
         # Graceful: Artikel behalten, neutrale Bewertung (Lauf nicht blockieren).
         for a in articles:
@@ -327,7 +379,7 @@ def analyze_newsletters(newsletters: list[dict]) -> tuple[list[dict], list[str]]
     failed = 0
     for mail in newsletters:
         system, user = _build_newsletter_prompt(mail)
-        parsed = _call_and_parse(system, user, max_tokens=2048)
+        parsed = _call_and_parse(system, user, max_tokens=2048, label="newsletter")
         if parsed is None:
             failed += 1
             continue  # Analyse fehlgeschlagen -> NICHT als gesehen markieren

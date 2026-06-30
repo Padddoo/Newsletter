@@ -135,5 +135,46 @@ class ApiErrorTrackingTests(unittest.TestCase):
         self.assertIsNone(A.limit_reason())
 
 
+class _FakeUsage:
+    def __init__(self, **kw):
+        self.input_tokens = kw.get("input_tokens", 0)
+        self.output_tokens = kw.get("output_tokens", 0)
+        self.cache_read_input_tokens = kw.get("cache_read_input_tokens", 0)
+        self.cache_creation_input_tokens = kw.get("cache_creation_input_tokens", 0)
+
+
+class UsageTrackingTests(unittest.TestCase):
+    def setUp(self):
+        A.reset_usage()
+        self.addCleanup(A.reset_usage)
+
+    def test_record_aggregates_per_label(self):
+        A._record_usage("newsletter", _FakeUsage(input_tokens=100, output_tokens=20))
+        A._record_usage("newsletter", _FakeUsage(input_tokens=50, output_tokens=10))
+        A._record_usage("rss", _FakeUsage(input_tokens=300, output_tokens=40))
+        s = A.usage_summary()
+        self.assertEqual(s["newsletter"]["calls"], 2)
+        self.assertEqual(s["newsletter"]["input_tokens"], 150)
+        self.assertEqual(s["newsletter"]["output_tokens"], 30)
+        self.assertEqual(s["rss"]["calls"], 1)
+
+    def test_cost_estimate_sonnet(self):
+        A._record_usage("rss", _FakeUsage(input_tokens=1_000_000,
+                                          output_tokens=1_000_000))
+        # 1M in * $3 + 1M out * $15 = $18
+        self.assertAlmostEqual(A.estimated_cost_usd("claude-sonnet-4-6"), 18.0, places=4)
+
+    def test_cost_estimate_handles_cache_and_none(self):
+        A._record_usage("rss", _FakeUsage(cache_read_input_tokens=1_000_000))
+        A._record_usage("rss", None)  # darf nicht crashen
+        # 1M Cache-Read * $3 * 0.1 = $0.30
+        self.assertAlmostEqual(A.estimated_cost_usd("claude-sonnet-4-6"), 0.30, places=4)
+
+    def test_reset_clears_usage(self):
+        A._record_usage("rss", _FakeUsage(input_tokens=10))
+        A.reset_usage()
+        self.assertEqual(A.usage_summary(), {})
+
+
 if __name__ == "__main__":
     unittest.main()
