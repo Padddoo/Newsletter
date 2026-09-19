@@ -1,14 +1,5 @@
 {
 "seen_ids": [
-"<010f019f6b05bfdf-9d21c774-ac8f-47a2-9156-975b9c06510b-000000@us-east-2.amazonses.com>",
-"<0100019f6a926800-4750eb86-f576-450d-9fbb-57aa302199ef-000000@email.amazonses.com>",
-"<fuo3K5wQSbuF8K4S5UqmoA@geopod-ismtpd-55>",
-"<6FU6Xu69QpiKslkCOGwURA@geopod-ismtpd-13>",
-"<wvoRAjc4SDSjho_kSZHgjw@geopod-ismtpd-44>",
-"<193078910292854513a404855@mlsend.com>",
-"<0100019f66059170-30bab134-9f4d-43b3-83ad-dc6ec6eb94ba-000000@email.amazonses.com>",
-"<0100019f65ecf31d-eeb54078-e172-44d7-ad64-948b4bcd65c0-000000@email.amazonses.com>",
-"<m-4Qdzs1Tje9vPnpUSTgmQ@geopod-ismtpd-115>",
 "<010f019f65dfcc59-5e7244b7-9464-4b4c-8884-2ef764612621-000000@us-east-2.amazonses.com>",
 "<010f019f71513870-c9052a8c-6ea4-419b-aa3c-be75d78d4918-000000@us-east-2.amazonses.com>",
 "<193260355938419909a404855@mlsend.com>",
@@ -499,6 +490,15 @@
 "<010001a0af8df66b-cca87d1b-fe16-4fc8-8178-fd2e5c114921-000000@email.amazonses.com>",
 "<7z3g0dWhQyGsadS7lYYAug@geopod-ismtpd-54>",
 "<20260917130222.3.3ce33c18473f4efe@mg-d1.substack.com>",
-"<f9c00765-62ee-47c9-bf13-826b99d23602@atl1s07mta0500.xt.local>"
+"<f9c00765-62ee-47c9-bf13-826b99d23602@atl1s07mta0500.xt.local>",
+"<20260918175432.3.8338811de37430e8@mg2.substack.com>",
+"<N5bav7KMSLKgwxBJbD34zw@geopod-ismtpd-63>",
+"<010f01a0b50897a7-3c116263-39a6-4f5a-ba18-aa02df3eb4cd-000000@us-east-2.amazonses.com>",
+"<010001a0b4d4f22e-bf7efe1b-20a4-4ea4-878a-191d579a46bc-000000@email.amazonses.com>",
+"<010001a0b4bcec67-8510daad-a5de-455d-b9ba-b6f6fb11a70f-000000@email.amazonses.com>",
+"<010001a0b4b39f81-7d95099d-9f95-46a8-9a57-331e4b7a06d1-000000@email.amazonses.com>",
+"<010001a0b44ef798-e8424b47-ca12-4c97-9d23-57577f471424-000000@email.amazonses.com>",
+"<010001a0b43d741b-b5eea2c1-a18d-40dd-bc80-29cd62eec60c-000000@email.amazonses.com>",
+"<H_aw4UtATT2cgKUnwoKY2w@geopod-ismtpd-75>"
 ]
 }
